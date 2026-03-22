@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GEOGPX Total v.1.3 - Przeglądarka i Analiza GPX</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="tailwind.js"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Recharts (Wykresy) -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* USUNIĘTO BLOKADĘ PRZEWIJANIA - Aplikacja zachowuje się jak normalna strona */
+        html, body { 
+            width: 100%; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f8fafc; /* Jasne tło aplikacji */
+            overflow-x: hidden;
+        }
+        #root { 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .leaflet-container { z-index: 10; font-family: 'Inter', sans-serif; }
+        
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const translations = {
+            pl: {
+                welcomeTitle: "GEOGPX Total v.1.3",
+                welcomeDesc: "Wgraj ślady GPX i porównuj ich statystyki.",
+                projectNameLabel: "Nazwa projektu:",
+                placeholderProject: "Moja_Mapa_Offline",
+                btnLoadProject: "Wczytaj projekt",
+                btnSaveProject: "Zapisz projekt",
+                step1Title: "Wgraj oryginały",
+                gpxSectionTitle: "Ślady trasy (.gpx - można wiele)",
+                gpxSectionDesc: "Wgraj jeden lub więcej plików z trasami, aby przeanalizować je w systemie i nałożyć na mapę.",
+                btnChooseFiles: "Wybierz pliki",
+                noFilesSelected: "Nie wybrano pliku",
+                mainFunctionBadge: "GŁÓWNA FUNKCJA",
+                filesSelected: "Wybrano plików:",
+                btnStart: "Rozpocznij Projekt",
+                tooltipDeleteAll: "Usuń wszystkie wgrane ślady z aplikacji",
+                filtering: "Filtrowanie",
+                allYears: "Wszystkie lata",
+                allMonths: "Wszystkie miesiące",
+                allTypes: "Wszystkie typy aktywności",
+                noResultsFilter: "Brak wyników dla filtrów.",
+                uploadGpxPrompt: "Wgraj z dysku pliki GPX.",
+                tabMap: "MAPA",
+                tabTrack: "TRASA",
+                tabSummary: "PODSUMOWANIE",
+                tabStats: "STATY",
+                tabList: "LISTA",
+                selectTracksPrompt: "Wybierz 1 lub 2 ślady z listy, aby zobaczyć szczegóły lub je porównać.",
+                appLabel: "Aplikacja",
+                distance: "Dystans",
+                ascent: "Podejścia",
+                descent: "Zjazdy / Zejścia",
+                elevation: "Wysokość",
+                max: "Max",
+                min: "Min",
+                totalTime: "Czas Całkowity",
+                movingTime: "Czas w ruchu",
+                avgPace: "Średnie Tempo",
+                avgSpeed: "Średnia Prędkość",
+                movingPace: "Tempo w ruchu",
+                movingSpeed: "Prędkość w ruchu",
+                eleProfile: "Profil Wysokościowy",
+                noEleData: "Plik nie zawiera danych o wysokości.",
+                paceProfile: "Profil Tempa",
+                speedProfile: "Profil Prędkości",
+                mergedEleProfile: "Nałożone Profile Wysokościowe (wspólna oś dystansu)",
+                mergedPaceProfile: "Nałożone Profile Tempa (wspólna oś dystansu)",
+                mergedSpeedProfile: "Nałożone Profile Prędkości (wspólna oś dystansu)",
+                pace: "Tempo",
+                speed: "Prędkość",
+                masl: "m n.p.m.",
+                generalStats: "Statystyki Generalne",
+                totalDist: "Całkowity Dystans",
+                totalAsc: "Całkowite Podejścia",
+                timeOnTrack: "Czas na trasie",
+                activityCount: "Ilość Aktywności",
+                activityBreakdown: "Podział wg Aktywności",
+                historyChart: "Historia (Ostatnie chronologicznie)",
+                saveModalTitle: "Zapisz Projekt GEOGPX",
+                saveModalDesc: "Wpisz nazwę pliku `.json`. Przeglądarka pozwoli Ci wybrać dowolne miejsce zapisu na urządzeniu.",
+                fileNamePlaceholder: "Nazwa pliku",
+                btnCancel: "Anuluj",
+                btnSaveDisk: "Zapisz na dysku",
+                uploadingTracks: "Wczytywanie śladów...",
+                outOf: "z",
+                uploadWait: "Proszę czekać, przetwarzanie danych z plików GPX.",
+                importingProject: "Wczytywanie projektu...",
+                importWait: "Trwa ładowanie i przetwarzanie pliku JSON. Może to potrwać chwilę przy obszernych projektach.",
+                unknownApp: "Nieznana",
+                otherType: "Inna",
+                noData: "Brak danych",
+                errSave: "Nie udało się zapisać pliku.",
+                errImport: "Nieprawidłowy lub uszkodzony plik.",
+                noYear: "Brak",
+                fullscreen: "Pełny ekran",
+                exitFullscreen: "Zamknij pełny ekran"
+            },
+            en: {
+                welcomeTitle: "GEOGPX Total v.1.3",
+                welcomeDesc: "Upload GPX tracks and compare their statistics.",
+                projectNameLabel: "Project Name:",
+                placeholderProject: "My_Offline_Map",
+                btnLoadProject: "Load project",
+                btnSaveProject: "Save project",
+                step1Title: "Upload originals",
+                gpxSectionTitle: "Track paths (.gpx - multi allowed)",
+                gpxSectionDesc: "Upload one or more track files to analyze them in the system and overlay on the map.",
+                btnChooseFiles: "Choose files",
+                noFilesSelected: "No file selected",
+                mainFunctionBadge: "MAIN FUNCTION",
+                filesSelected: "Files selected:",
+                btnStart: "Start Project",
+                tooltipDeleteAll: "Remove all uploaded tracks",
+                filtering: "Filtering",
+                allYears: "All years",
+                allMonths: "All months",
+                allTypes: "All types",
+                noResultsFilter: "No results.",
+                uploadGpxPrompt: "Upload GPX files.",
+                tabMap: "MAP",
+                tabTrack: "TRACK",
+                tabSummary: "SUMMARY",
+                tabStats: "STATS",
+                tabList: "LIST",
+                selectTracksPrompt: "Select 1 or 2 tracks to view details or compare.",
+                appLabel: "App",
+                distance: "Distance",
+                ascent: "Ascent",
+                descent: "Descent",
+                elevation: "Elevation",
+                max: "Max",
+                min: "Min",
+                totalTime: "Total Time",
+                movingTime: "Moving Time",
+                avgPace: "Avg Pace",
+                avgSpeed: "Avg Speed",
+                movingPace: "Moving Pace",
+                movingSpeed: "Moving Speed",
+                eleProfile: "Elevation Profile",
+                noEleData: "No elevation data.",
+                paceProfile: "Pace Profile",
+                speedProfile: "Speed Profile",
+                mergedEleProfile: "Merged Elevation Profiles",
+                mergedPaceProfile: "Merged Pace Profiles",
+                mergedSpeedProfile: "Merged Speed Profiles",
+                pace: "Pace",
+                speed: "Speed",
+                masl: "m a.s.l.",
+                generalStats: "General Statistics",
+                totalDist: "Total Distance",
+                totalAsc: "Total Ascent",
+                timeOnTrack: "Time on track",
+                activityCount: "Activity Count",
+                activityBreakdown: "Activity Breakdown",
+                historyChart: "History (Latest)",
+                saveModalTitle: "Save GEOGPX Project",
+                saveModalDesc: "Enter the `.json` file name.",
+                fileNamePlaceholder: "File name",
+                btnCancel: "Cancel",
+                btnSaveDisk: "Save to disk",
+                uploadingTracks: "Uploading tracks...",
+                outOf: "of",
+                uploadWait: "Please wait, processing data.",
+                importingProject: "Loading project...",
+                importWait: "Loading and processing JSON file.",
+                unknownApp: "Unknown",
+                otherType: "Other",
+                noData: "No data",
+                errSave: "Failed to save the file.",
+                errImport: "Invalid or corrupted file.",
+                noYear: "None",
+                fullscreen: "Fullscreen",
+                exitFullscreen: "Exit fullscreen"
+            }
+        };
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentLang = urlParams.get('lang') === 'en' ? 'en' : 'pl';
+        const t = (key) => translations[currentLang][key] || key;
+        document.documentElement.lang = currentLang;
+
+        const { useState, useEffect, useRef, useMemo } = React;
+        const { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } = window.Recharts;
+
+        // --- IKONY SVG ---
+        const Icons = {
+            FolderPlus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>,
+            Save: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+            MapPin: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+            MapFolder: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            TrendingUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+            Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+            Filter: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>,
+            PieChart: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
+            Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+            Compare: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-6 6"/><path d="M8 21H3v-5"/><path d="M3 21l6-6"/></svg>,
+            List: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>,
+            Expand: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9" /><line x1="21" y1="3" x2="14" y2="10" /><polyline points="9 21 3 21 3 15" /><line x1="3" y1="21" x2="10" y2="14" /><polyline points="21 15 21 21 15 21" /><line x1="21" y1="21" x2="14" y2="14" /><polyline points="9 3 3 3 3 9" /><line x1="3" y1="3" x2="10" y2="10" /></svg>,
+            Minimize: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 10 14 10 20" /><line x1="10" y1="14" x2="3" y2="21" /><polyline points="20 10 14 10 14 4" /><line x1="14" y1="10" x2="21" y2="3" /><polyline points="14 20 14 14 20 14" /><line x1="14" y1="14" x2="21" y2="21" /><polyline points="10 4 10 10 4 10" /><line x1="10" y1="10" x2="3" y2="3" /></svg>,
+            Upload: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        };
+
+        const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#6366f1'];
+        const SELECTED_COLORS = ['#f97316', '#3b82f6']; 
+
+        // --- NARZĘDZIA FORMATOWANIA ---
+        const formatTime = (ms) => {
+            if (!ms || isNaN(ms)) return "-";
+            const hrs = Math.floor(ms / 3600000);
+            const mins = Math.floor((ms % 3600000) / 60000);
+            const secs = Math.floor((ms % 60000) / 1000);
+            if (hrs > 0) return `${hrs}h ${mins}m`;
+            return `${mins}m ${secs}s`;
+        };
+
+        const formatPace = (speedKmh) => {
+            const s = parseFloat(speedKmh);
+            if (!s || s < 0.5) return "-";
+            const paceDecimal = 60 / s;
+            const mins = Math.floor(paceDecimal);
+            const secs = Math.floor((paceDecimal - mins) * 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        const formatPaceFromDecimal = (paceDecimal) => {
+            if (!paceDecimal || paceDecimal >= 30) return ">30:00";
+            const mins = Math.floor(paceDecimal);
+            const secs = Math.floor((paceDecimal - mins) * 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        };
+
+        const calculateDistance = (p1, p2) => {
+            const R = 6371;
+            const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+            const dLon = (p2.lng - p1.lng) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        };
+
+        const parseGPX = (file) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(e.target.result, "text/xml");
+
+                        let name = file.name;
+                        const nameNode = xmlDoc.getElementsByTagName('name')[0];
+                        if (nameNode && nameNode.textContent) name = nameNode.textContent.trim();
+
+                        let creator = xmlDoc.documentElement.getAttribute('creator') || t('unknownApp');
+                        let activityType = t('otherType');
+                        let typeNode = xmlDoc.querySelector('trk > type') || xmlDoc.querySelector('type');
+                        if (typeNode && typeNode.textContent) activityType = typeNode.textContent.trim();
+
+                        let ptNodes = Array.from(xmlDoc.getElementsByTagName('trkpt'));
+                        if (ptNodes.length === 0) ptNodes = Array.from(xmlDoc.getElementsByTagName('rtept'));
+                        
+                        const points = [];
+                        let totalDist = 0;
+                        let minEle = Infinity;
+                        let maxEle = -Infinity;
+                        let sumEle = 0;
+                        let eleCount = 0;
+                        let elevationProfile = [];
+
+                        let totalAscent = 0;
+                        let totalDescent = 0;
+                        let lastSignificantEle = null;
+                        const ELE_THRESHOLD = 2.0;
+
+                        let startTime = null;
+                        let endTime = null;
+                        let movingTimeMs = 0;
+                        let prevTime = null;
+                        let prevPt = null;
+
+                        let lastSampledDist = 0;
+                        let lastSampledTime = null;
+                        let hasElevationData = false;
+
+                        for (let i = 0; i < ptNodes.length; i++) {
+                            const lat = parseFloat(ptNodes[i].getAttribute('lat'));
+                            const lng = parseFloat(ptNodes[i].getAttribute('lon'));
+                            
+                            const eleNode = ptNodes[i].getElementsByTagName('ele')[0];
+                            const ele = eleNode ? parseFloat(eleNode.textContent) : null;
+
+                            const timeNode = ptNodes[i].getElementsByTagName('time')[0];
+                            let ptTime = null;
+                            if (timeNode) {
+                                ptTime = new Date(timeNode.textContent).getTime();
+                                if (!startTime) startTime = ptTime;
+                                endTime = ptTime;
+                            }
+
+                            if (!isNaN(lat) && !isNaN(lng)) {
+                                const currPt = { lat, lng };
+                                if (i > 0 && prevPt) {
+                                    const d = calculateDistance(prevPt, currPt);
+                                    totalDist += d;
+                                    if (ptTime && prevTime) {
+                                        const timeDiff = ptTime - prevTime;
+                                        if (timeDiff > 0) {
+                                            const speedKmh = (d / (timeDiff / 3600000));
+                                            if (speedKmh > 1) movingTimeMs += timeDiff;
+                                        }
+                                    }
+                                }
+                                
+                                points.push({ lat, lng, ele, time: ptTime });
+                                prevPt = currPt;
+                                prevTime = ptTime;
+
+                                if (ele !== null) {
+                                    hasElevationData = true;
+                                    if (ele < minEle) minEle = ele;
+                                    if (ele > maxEle) maxEle = ele;
+                                    sumEle += ele;
+                                    eleCount++;
+                                    if (lastSignificantEle === null) {
+                                        lastSignificantEle = ele;
+                                    } else {
+                                        const diff = ele - lastSignificantEle;
+                                        if (Math.abs(diff) >= ELE_THRESHOLD) {
+                                            if (diff > 0) totalAscent += diff;
+                                            else totalDescent += Math.abs(diff);
+                                            lastSignificantEle = ele;
+                                        }
+                                    }
+                                }
+
+                                if (i === 0 || i === ptNodes.length - 1 || i % Math.max(1, Math.floor(ptNodes.length / 150)) === 0) {
+                                    let currentSpeed = 0;
+                                    let currentPace = 0;
+                                    if (lastSampledTime && ptTime > lastSampledTime) {
+                                        const dDiff = totalDist - lastSampledDist;
+                                        const tDiff = (ptTime - lastSampledTime) / 3600000;
+                                        currentSpeed = tDiff > 0 ? (dDiff / tDiff) : 0;
+                                        if (currentSpeed > 100) currentSpeed = 100;
+                                        if (currentSpeed > 0.5) {
+                                            currentPace = 60 / currentSpeed;
+                                            if (currentPace > 30) currentPace = 30; 
+                                        } else {
+                                            currentPace = 30;
+                                        }
+                                    }
+
+                                    elevationProfile.push({
+                                        dist: parseFloat(totalDist.toFixed(2)),
+                                        ele: ele !== null ? parseFloat(ele.toFixed(1)) : null,
+                                        speed: parseFloat(currentSpeed.toFixed(1)),
+                                        pace: parseFloat(currentPace.toFixed(2))
+                                    });
+
+                                    lastSampledDist = totalDist;
+                                    lastSampledTime = ptTime;
+                                }
+                            }
+                        }
+
+                        let dateStr = t('noData');
+                        if (startTime) {
+                            const dateObj = new Date(startTime);
+                            const locale = currentLang === 'en' ? 'en-US' : 'pl-PL';
+                            dateStr = dateObj.toLocaleDateString(locale) + ' ' + dateObj.toLocaleTimeString(locale, {hour: '2-digit', minute:'2-digit'});
+                        }
+
+                        const avgEle = eleCount > 0 ? (sumEle / eleCount) : 0;
+                        const totalTimeMs = startTime && endTime ? (endTime - startTime) : 0;
+                        const totalAvgSpeed = (totalTimeMs > 0 && totalDist > 0) ? (totalDist / (totalTimeMs / 3600000)) : 0;
+                        const movingAvgSpeed = (movingTimeMs > 0 && totalDist > 0) ? (totalDist / (movingTimeMs / 3600000)) : 0;
+
+                        resolve({
+                            id: Math.random().toString(36).substr(2, 9),
+                            name,
+                            creator,
+                            type: activityType,
+                            pointsCount: points.length,
+                            points,
+                            hasElevation: hasElevationData,
+                            hasTime: totalTimeMs > 0,
+                            distance: totalDist.toFixed(2),
+                            ascent: totalAscent.toFixed(0),
+                            descent: totalDescent.toFixed(0),
+                            minEle: minEle === Infinity ? 0 : minEle.toFixed(0),
+                            maxEle: maxEle === -Infinity ? 0 : maxEle.toFixed(0),
+                            avgEle: avgEle.toFixed(0),
+                            elevationProfile,
+                            date: dateStr,
+                            timestamp: startTime,
+                            totalTimeMs,
+                            movingTimeMs,
+                            avgSpeed: totalAvgSpeed.toFixed(1),
+                            movingAvgSpeed: movingAvgSpeed.toFixed(1)
+                        });
+                    } catch (err) {
+                        console.error("Błąd parsowania:", err);
+                        resolve(null);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        };
+
+        // --- KOMPONENT MAPY (Z Nakładkami) ---
+        const LeafletMap = ({ tracks, selectedTrackIds, onMapClick, activeTab, isFullscreen, selectedTracksData, speedUnit }) => {
+            const mapRef = useRef(null);
+            const mapInstance = useRef(null);
+            const layerGroup = useRef(null);
+
+            useEffect(() => {
+                if (mapInstance.current) return; 
+                
+                mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([52.0693, 19.4803], 6);
+                L.control.zoom({ position: 'bottomright' }).addTo(mapInstance.current);
+
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }).addTo(mapInstance.current);
+                
+                layerGroup.current = L.featureGroup().addTo(mapInstance.current);
+                mapInstance.current.on('click', () => onMapClick(null));
+
+                return () => {
+                    if (mapInstance.current) {
+                        mapInstance.current.remove();
+                        mapInstance.current = null;
+                    }
+                };
+            }, []);
+
+            useEffect(() => {
+                if ((activeTab === 'map' || isFullscreen) && mapInstance.current) {
+                    setTimeout(() => mapInstance.current.invalidateSize(), 200);
+                }
+            }, [activeTab, isFullscreen]);
+
+            useEffect(() => {
+                if (!layerGroup.current || !mapInstance.current) return;
+                layerGroup.current.clearLayers();
+                if (tracks.length === 0) return;
+
+                const boundsSelected = L.latLngBounds();
+                const boundsAll = L.latLngBounds();
+
+                tracks.forEach(track => {
+                    const selIndex = selectedTrackIds.indexOf(track.id);
+                    const isSelected = selIndex !== -1;
+                    const color = isSelected ? SELECTED_COLORS[selIndex] : '#6b7280';
+                    
+                    const poly = L.polyline(track.points.map(p => [p.lat, p.lng]), {
+                        color: color,
+                        weight: isSelected ? 6 : 3,
+                        opacity: isSelected ? 1 : 0.6
+                    }).on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        onMapClick(track.id);
+                    });
+                    
+                    poly.bindTooltip(`${track.name} (${track.distance} km)`, {sticky: true, className: 'text-xs font-bold'});
+                    layerGroup.current.addLayer(poly);
+                    boundsAll.extend(poly.getBounds());
+                    if (isSelected) {
+                        boundsSelected.extend(poly.getBounds());
+                        poly.bringToFront();
+                    }
+                });
+
+                if (tracks.length > 0) {
+                    if (selectedTrackIds.length > 0 && boundsSelected.isValid()) {
+                        mapInstance.current.flyToBounds(boundsSelected, { padding: [40, 40], maxZoom: 14, duration: 1 });
+                    } else if (boundsAll.isValid()) {
+                        mapInstance.current.fitBounds(boundsAll, { padding: [20, 20] });
+                    }
+                }
+            }, [tracks, selectedTrackIds]);
+
+            return (
+                <div className="w-full h-full z-0 relative bg-gray-100 flex items-center justify-center">
+                    <div ref={mapRef} className="w-full h-full z-0" />
+                    {tracks.length === 0 && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                            <span className="text-3xl md:text-5xl font-black text-gray-300 opacity-60 uppercase tracking-wider">Brak obrazu mapy</span>
+                        </div>
+                    )}
+
+                    {isFullscreen && (
+                        <>
+                            <div className="absolute top-4 left-4 z-[1000] bg-white/95 backdrop-blur-md w-48 md:w-64 max-h-[40vh] md:max-h-[80vh] rounded-xl shadow-lg border border-gray-200 flex flex-col overflow-hidden pointer-events-auto">
+                                <div className="p-3 bg-gray-50/90 border-b border-gray-100 font-bold text-xs text-gray-600 uppercase flex items-center gap-2">
+                                    <Icons.List /> {t('filtering')} / Wybór
+                                </div>
+                                <div className="overflow-y-auto flex-1 custom-scrollbar p-1.5 space-y-1">
+                                    {tracks.map(track => {
+                                        const isSelected = selectedTrackIds.includes(track.id);
+                                        return (
+                                            <div key={track.id} onClick={(e) => { e.stopPropagation(); onMapClick(track.id); }} className={`p-2.5 text-xs font-bold cursor-pointer rounded-lg border-l-4 transition-colors ${isSelected ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-transparent bg-transparent hover:bg-gray-100 text-gray-700'}`}>
+                                                <div className="truncate">{track.name}</div>
+                                                <div className="text-[10px] font-normal opacity-70 mt-0.5">{track.distance} km • {track.type}</div>
+                                            </div>
+                                        );
+                                    })}
+                                    {tracks.length === 0 && <div className="p-4 text-xs text-center text-gray-400">Brak tras</div>}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+
+        // --- GŁÓWNA APLIKACJA ---
+        const App = () => {
+            const [tracks, setTracks] = useState([]);
+            const [selectedTrackIds, setSelectedTrackIds] = useState([]);
+            const [uploadStatus, setUploadStatus] = useState({ isUploading: false, current: 0, total: 0 });
+            const [importStatus, setImportStatus] = useState({ isImporting: false, progress: 0 });
+            const [speedUnit, setSpeedUnit] = useState('kmh');
+            const [profileName, setProfileName] = useState('');
+            const [activeTab, setActiveTab] = useState('map'); 
+            const [isFullscreen, setIsFullscreen] = useState(false);
+            const [showSaveModal, setShowSaveModal] = useState(false);
+            const [saveFileName, setSaveFileName] = useState('');
+            const [filterYear, setFilterYear] = useState('All');
+            const [filterMonth, setFilterMonth] = useState('All');
+            const [filterType, setFilterType] = useState('All');
+
+            const availableYears = useMemo(() => {
+                const years = tracks.map(t => t.timestamp ? new Date(t.timestamp).getFullYear().toString() : t('noYear'));
+                return ['All', ...new Set(years)].sort((a, b) => b.localeCompare(a));
+            }, [tracks]);
+
+            const availableTypes = useMemo(() => {
+                const types = tracks.map(t => t.type || t('otherType'));
+                return ['All', ...new Set(types)].sort();
+            }, [tracks]);
+
+            const filteredTracks = useMemo(() => {
+                return tracks.filter(t => {
+                    if (filterType !== 'All' && (t.type || t('otherType')) !== filterType) return false;
+                    if (filterYear !== 'All') {
+                        const y = t.timestamp ? new Date(t.timestamp).getFullYear().toString() : t('noYear');
+                        if (y !== filterYear) return false;
+                    }
+                    if (filterMonth !== 'All') {
+                        const m = t.timestamp ? (new Date(t.timestamp).getMonth() + 1).toString() : t('noYear');
+                        if (m !== filterMonth) return false;
+                    }
+                    return true;
+                });
+            }, [tracks, filterType, filterYear, filterMonth]);
+
+            useEffect(() => {
+                const newSelection = selectedTrackIds.filter(id => filteredTracks.some(t => t.id === id));
+                if (newSelection.length !== selectedTrackIds.length) {
+                    setSelectedTrackIds(newSelection);
+                }
+            }, [filteredTracks, selectedTrackIds]);
+
+            const selectedTracksData = useMemo(() => {
+                return selectedTrackIds.map(id => tracks.find(t => t.id === id)).filter(Boolean);
+            }, [tracks, selectedTrackIds]);
+
+            const mergedProfile = useMemo(() => {
+                if (selectedTracksData.length !== 2) return [];
+                const [t1, t2] = selectedTracksData;
+                
+                const dists = Array.from(new Set([
+                    ...t1.elevationProfile.map(p => p.dist),
+                    ...t2.elevationProfile.map(p => p.dist)
+                ])).sort((a, b) => a - b);
+                
+                let last1_ele = t1.elevationProfile[0]?.ele !== undefined ? t1.elevationProfile[0].ele : null;
+                let last2_ele = t2.elevationProfile[0]?.ele !== undefined ? t2.elevationProfile[0].ele : null;
+                let last1_speed = t1.elevationProfile[0]?.speed || 0;
+                let last2_speed = t2.elevationProfile[0]?.speed || 0;
+                let last1_pace = t1.elevationProfile[0]?.pace || 0;
+                let last2_pace = t2.elevationProfile[0]?.pace || 0;
+                
+                return dists.map(d => {
+                    const p1 = t1.elevationProfile.find(p => p.dist === d);
+                    const p2 = t2.elevationProfile.find(p => p.dist === d);
+                    if (p1) { last1_ele = p1.ele; last1_speed = p1.speed; last1_pace = p1.pace; }
+                    if (p2) { last2_ele = p2.ele; last2_speed = p2.speed; last2_pace = p2.pace; }
+                    return { dist: d, ele1: last1_ele, ele2: last2_ele, speed1: last1_speed, speed2: last2_speed, pace1: last1_pace, pace2: last2_pace };
+                });
+            }, [selectedTracksData]);
+
+            const stats = useMemo(() => {
+                const dist = filteredTracks.reduce((sum, t) => sum + parseFloat(t.distance), 0);
+                const asc = filteredTracks.reduce((sum, t) => sum + parseFloat(t.ascent), 0);
+                const desc = filteredTracks.reduce((sum, t) => sum + parseFloat(t.descent), 0);
+                const totalTime = filteredTracks.reduce((sum, t) => sum + (t.totalTimeMs || 0), 0);
+                const count = filteredTracks.length;
+                return { 
+                    dist: dist.toFixed(1), asc: asc.toFixed(0), desc: desc.toFixed(0), time: formatTime(totalTime), count
+                };
+            }, [filteredTracks]);
+
+            const handleFileUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+                
+                setUploadStatus({ isUploading: true, current: 0, total: files.length });
+                const newTracks = [];
+                
+                for (let i = 0; i < files.length; i++) {
+                    const parsed = await parseGPX(files[i]);
+                    if (parsed) newTracks.push(parsed);
+                    setUploadStatus({ isUploading: true, current: i + 1, total: files.length });
+                    await new Promise(r => setTimeout(r, 10));
+                }
+                
+                setTracks(prev => [...newTracks, ...prev]);
+                setUploadStatus({ isUploading: false, current: 0, total: 0 });
+                e.target.value = ''; 
+            };
+
+            const confirmExport = async () => {
+                const data = JSON.stringify({ profileName, tracks });
+                const blob = new Blob([data], { type: 'application/json' });
+                
+                // Bezpieczne ustalenie nazwy pliku (usuwa wielokrotne .json, jeśli ktoś wpisał ręcznie)
+                let baseName = saveFileName || profileName || 'geogpx_projekt';
+                baseName = baseName.replace(/\.json$/i, '');
+                const finalFileName = `${baseName}.json`;
+                
+                try {
+                    let pickerSuccess = false;
+                    
+                    // Próba wywołania natywnego okna "Zapisz jako" (pyta o miejsce zapisu)
+                    if (window.showSaveFilePicker) {
+                        try {
+                            const handle = await window.showSaveFilePicker({
+                                suggestedName: finalFileName,
+                                types: [{ description: 'Plik projektu JSON', accept: { 'application/json': ['.json'] } }],
+                            });
+                            const writable = await handle.createWritable();
+                            await writable.write(blob);
+                            await writable.close();
+                            pickerSuccess = true;
+                        } catch (pickerErr) {
+                            if (pickerErr.name === 'AbortError') return; // Użytkownik sam zamknął okno
+                            console.warn("Natywne okno zapisu zablokowane. Przejście do klasycznego pobierania.", pickerErr);
+                        }
+                    }
+                    
+                    // Klasyczna metoda pobierania (wymuszana jako zabezpieczenie)
+                    if (!pickerSuccess) {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = finalFileName;
+                        document.body.appendChild(a); // Wymagane do prawidłowego działania w Firefox
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                    }
+                    
+                    setShowSaveModal(false);
+                } catch (err) {
+                    console.error("Błąd zapisu:", err);
+                    alert(t('errSave'));
+                }
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setImportStatus({ isImporting: true, progress: 0 });
+                const reader = new FileReader();
+                reader.onprogress = (ev) => {
+                    if (ev.lengthComputable) setImportStatus({ isImporting: true, progress: Math.round((ev.loaded / ev.total) * 100) });
+                };
+                reader.onload = (ev) => {
+                    setTimeout(() => {
+                        try {
+                            const data = JSON.parse(ev.target.result);
+                            setProfileName(data.profileName || '');
+                            setTracks(data.tracks);
+                        } catch (err) {
+                            alert(t('errImport'));
+                        } finally {
+                            setImportStatus({ isImporting: false, progress: 0 });
+                        }
+                    }, 50);
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            };
+
+            const toggleTrackSelection = (id) => {
+                if (!id) return setSelectedTrackIds([]);
+                setSelectedTrackIds(prev => {
+                    if (prev.includes(id)) return prev.filter(x => x !== id);
+                    if (prev.length >= 2) return [prev[1], id]; 
+                    return [...prev, id];
+                });
+            };
+
+            const StatComparisonBox = ({ title, t1, t2, unit }) => (
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 flex flex-col justify-center">
+                    <div className="text-[10px] text-gray-400 font-bold uppercase mb-2">{title}</div>
+                    <div className="font-black text-orange-500 text-lg leading-none mb-1.5 break-words">{t1} <span className="text-xs font-normal">{unit}</span></div>
+                    <div className="font-black text-blue-500 text-lg leading-none break-words">{t2} <span className="text-xs font-normal">{unit}</span></div>
+                </div>
+            );
+
+            return (
+                <div className="flex flex-col min-h-screen bg-[#f8fafc] text-gray-800 font-sans">
+                    
+                    {/* GŁÓWNY NAGŁÓWEK APLIKACJI */}
+                    {!isFullscreen && (
+                        <header className="bg-white px-5 md:px-8 pt-6 pb-5 shrink-0 z-20 border-b border-gray-200 shadow-sm">
+                            <div className="max-w-[1600px] mx-auto">
+                                <h1 className="text-[17px] md:text-[22px] font-black text-[#2563eb] leading-tight tracking-tight mb-2">
+                                    {t('welcomeTitle')}
+                                </h1>
+                                <p className="text-[14px] md:text-[15px] text-gray-600 mb-6 font-medium">
+                                    {t('welcomeDesc')}
+                                </p>
+                                
+                                <div className="border border-gray-200 rounded-[14px] p-4 bg-white shadow-sm flex flex-col md:flex-row md:items-end justify-between gap-4">
+                                    <div className="flex-1 max-w-xl">
+                                        <label className="block text-[13px] md:text-sm font-bold text-[#1e293b] mb-2">{t('projectNameLabel')}</label>
+                                        <input 
+                                            type="text" 
+                                            value={profileName} 
+                                            onChange={(e) => setProfileName(e.target.value)} 
+                                            placeholder={t('placeholderProject')}
+                                            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-[14px] md:text-[15px] text-gray-700 font-medium placeholder-gray-400"
+                                        />
+                                    </div>
+                                    <div className="flex gap-3 shrink-0 mt-2 md:mt-0">
+                                        <label className="bg-[#6366f1] hover:bg-[#4f46e5] text-white px-5 py-2.5 rounded-lg text-[13px] md:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-sm w-full md:w-auto">
+                                            <Icons.FolderPlus /> {t('btnLoadProject')}
+                                            <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+                                        </label>
+                                        <button onClick={() => { setSaveFileName(profileName || 'Moj_Projekt'); setShowSaveModal(true); }} className="bg-[#f59e0b] hover:bg-[#d97706] text-white px-5 py-2.5 rounded-lg text-[13px] md:text-sm font-bold flex items-center justify-center gap-2 transition-colors shadow-sm w-full md:w-auto">
+                                            <Icons.Save /> {t('btnSaveProject')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </header>
+                    )}
+
+                    {/* OBSZAR ROBOCZY - PRZEWIJANA STRONA */}
+                    <main className="flex-1 flex flex-col md:flex-row max-w-[1600px] mx-auto w-full items-start gap-4 md:gap-6 p-4 md:p-6 pb-24 md:pb-6">
+                        
+                        {/* LEWA KOLUMNA (MNIEJSZA KARTA) */}
+                        <aside className={`w-full md:w-[340px] bg-white border border-gray-200 rounded-2xl shadow-sm p-4 md:p-5 flex-col shrink-0 ${activeTab === 'list' && !isFullscreen ? 'flex' : 'hidden md:flex'}`}>
+                            
+                            <div className="flex items-center gap-3 mb-5 px-1">
+                                <span className="bg-blue-100 text-[#2563eb] rounded-full w-8 h-8 flex items-center justify-center font-black text-sm shrink-0">1</span>
+                                <h2 className="text-lg font-black text-[#1e293b]">{t('step1Title')}</h2>
+                            </div>
+
+                            <div className="border border-[#10b981] rounded-2xl p-4 bg-white relative mb-6 shadow-sm">
+                                <div className="absolute top-0 right-0 bg-[#10b981] text-white text-[9px] px-3 py-1 rounded-bl-xl rounded-tr-[15px] font-black uppercase tracking-wider">
+                                    {t('mainFunctionBadge')}
+                                </div>
+                                <div className="flex items-center gap-2.5 mb-2 font-bold text-[#1d4ed8] text-[14px] pr-20">
+                                    <Icons.MapFolder /> {t('gpxSectionTitle')}
+                                </div>
+                                <p className="text-[12px] text-gray-500 mb-4 leading-relaxed pr-2">
+                                    {t('gpxSectionDesc')}
+                                </p>
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl p-2 pl-2">
+                                    <label className="bg-[#10b981] hover:bg-[#059669] text-white px-4 py-2 rounded-lg text-[12px] font-bold cursor-pointer transition-colors shadow-sm shrink-0 text-center w-full sm:w-auto">
+                                        {t('btnChooseFiles')}
+                                        <input type="file" multiple accept=".gpx" onChange={handleFileUpload} className="hidden" />
+                                    </label>
+                                    <span className="text-[12px] font-medium text-gray-500 truncate text-center sm:text-left pb-1 sm:pb-0">
+                                        {tracks.length > 0 ? `${t('filesSelected')} ${tracks.length}` : t('noFilesSelected')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Filtrowanie i Lista tras */}
+                            {tracks.length > 0 && (
+                                <div className="flex flex-col min-h-0 border-t border-gray-100 pt-5">
+                                    <div className="flex items-center justify-between gap-2 px-1 mb-3">
+                                        <span className="font-bold text-gray-500 text-[11px] uppercase flex items-center gap-2"><Icons.Filter /> {t('filtering')} ({stats.count})</span>
+                                        <button onClick={() => { setTracks([]); setSelectedTrackIds([]); }} className="text-gray-400 hover:text-red-500 p-1 rounded transition-colors" title={t('tooltipDeleteAll')}>
+                                            <Icons.Trash2 />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 mb-3">
+                                        <select className="p-2 text-[11px] rounded-lg border border-gray-200 outline-none text-gray-600 font-medium" value={filterYear} onChange={e => setFilterYear(e.target.value)}>
+                                            <option value="All">{t('allYears')}</option>
+                                            {availableYears.filter(y => y !== 'All').map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                        <select className="p-2 text-[11px] rounded-lg border border-gray-200 outline-none text-gray-600 font-medium" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                                            <option value="All">{t('allTypes')}</option>
+                                            {availableTypes.filter(t => t !== 'All').map(typ => <option key={typ} value={typ}>{typ}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {/* Lista ma maksymalną wysokość by nie rozpychała lewego panelu w nieskończoność */}
+                                    <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1.5 pb-2 pr-1">
+                                        {filteredTracks.map(track => {
+                                            const selIndex = selectedTrackIds.indexOf(track.id);
+                                            const isSelected = selIndex !== -1;
+                                            const borderColor = isSelected ? (selIndex === 0 ? 'border-[#f97316]' : 'border-[#3b82f6]') : 'border-transparent';
+                                            const bgColor = isSelected ? (selIndex === 0 ? 'bg-orange-50' : 'bg-blue-50') : 'bg-gray-50 hover:bg-gray-100';
+
+                                            return (
+                                                <div key={track.id} id={`track-item-${track.id}`} onClick={() => toggleTrackSelection(track.id)} className={`flex items-center justify-between p-3 rounded-xl border-l-[5px] ${borderColor} ${bgColor} transition-colors cursor-pointer border-t border-r border-b border-gray-100`}>
+                                                    <div className="flex flex-col flex-1 min-w-0 pr-2">
+                                                        <div className="font-bold text-[12px] text-gray-800 truncate">{track.name}</div>
+                                                        <div className="text-[10px] text-gray-500 mt-0.5 truncate">{track.date} • {track.type}</div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end whitespace-nowrap">
+                                                        <div className="font-black text-[12px] text-gray-700">{track.distance} <span className="text-[9px] font-normal">km</span></div>
+                                                        <div className="text-[10px] font-bold text-emerald-600">+{track.ascent}m</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {filteredTracks.length === 0 && <div className="text-center text-xs text-gray-400 mt-6 p-4">{t('noResultsFilter')}</div>}
+                                    </div>
+                                </div>
+                            )}
+                        </aside>
+
+                        {/* PRAWA KOLUMNA - ZAKŁADKI, MAPA I WIDOKI */}
+                        <section className={`flex flex-col w-full flex-1 ${isFullscreen ? 'fixed inset-0 z-[6000] bg-[#f8fafc] overflow-y-auto p-0 m-0' : ''}`}>
+                            
+                            {/* Pasek Zakładek - Na pełnym ekranie na środku, standardowo po lewej */}
+                            <div className={`flex items-center gap-2 shadow-sm z-[2000] ${isFullscreen ? 'fixed top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md p-1.5 rounded-xl border border-gray-200' : 'mb-4 bg-white p-1.5 rounded-xl border border-gray-200 w-fit'}`}>
+                                <button onClick={() => setActiveTab('map')} className={`px-4 md:px-5 py-2 md:py-2.5 rounded-lg text-[13px] md:text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'map' ? 'bg-[#3b82f6] text-white shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                                    <Icons.MapPin /> {t('tabMap')}
+                                </button>
+                                <button onClick={() => setActiveTab('details')} className={`px-4 md:px-5 py-2 md:py-2.5 rounded-lg text-[13px] md:text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'details' ? 'bg-[#3b82f6] text-white shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                                    <Icons.TrendingUp /> {t('tabTrack')} {selectedTrackIds.length > 0 && `(${selectedTrackIds.length})`}
+                                </button>
+                                <button onClick={() => setActiveTab('summary')} className={`px-4 md:px-5 py-2 md:py-2.5 rounded-lg text-[13px] md:text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'summary' ? 'bg-[#3b82f6] text-white shadow-sm' : 'bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}>
+                                    <Icons.PieChart /> {t('tabSummary')}
+                                </button>
+                            </div>
+
+                            {/* Kontener dla widoków (Mapa, Detale, Podsumowanie) */}
+                            <div className={`relative w-full flex flex-col ${!isFullscreen ? 'bg-white rounded-2xl border border-gray-200 shadow-sm' : 'min-h-screen'}`}>
+                                
+                                {/* Przycisk pełnego ekranu - Zawsze w prawym górnym rogu aktywnego widoku */}
+                                <button 
+                                    onClick={() => setIsFullscreen(!isFullscreen)}
+                                    className={`z-[2000] bg-white px-4 py-2.5 rounded-xl shadow-md text-gray-600 hover:bg-gray-50 flex items-center gap-2 text-[13px] font-bold border border-gray-200 transition-all hover:scale-105 ${isFullscreen ? 'fixed top-4 right-4' : 'absolute top-4 right-4'}`}
+                                    title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+                                >
+                                    {isFullscreen ? <Icons.Minimize /> : <Icons.Expand />} 
+                                    <span className="hidden sm:inline">{isFullscreen ? t('exitFullscreen') : t('fullscreen')}</span>
+                                </button>
+                                
+                                {/* WIDOK 1: MAPA */}
+                                <div className={`w-full ${activeTab === 'map' ? 'block' : 'hidden'} ${isFullscreen ? 'h-screen' : 'h-[600px] md:h-[750px] rounded-2xl overflow-hidden'}`}>
+                                    <LeafletMap 
+                                        tracks={filteredTracks} 
+                                        selectedTrackIds={selectedTrackIds} 
+                                        onMapClick={toggleTrackSelection} 
+                                        activeTab={activeTab} 
+                                        isFullscreen={isFullscreen}
+                                        selectedTracksData={selectedTracksData}
+                                        speedUnit={speedUnit}
+                                    />
+                                </div>
+
+                                {/* WIDOK 2: SZCZEGÓŁY KONKRETNEJ TRASY */}
+                                <div className={`w-full max-w-5xl mx-auto p-4 sm:p-6 md:p-8 ${activeTab === 'details' ? 'block' : 'hidden'} ${isFullscreen ? 'pt-24' : ''}`}>
+                                    <div className="flex justify-end mb-4">
+                                        <div className="flex bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                                            <button onClick={() => setSpeedUnit('kmh')} className={`px-4 py-1.5 text-xs font-bold ${speedUnit === 'kmh' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}>km/h</button>
+                                            <button onClick={() => setSpeedUnit('pace')} className={`px-4 py-1.5 text-xs font-bold border-l border-gray-200 ${speedUnit === 'pace' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}>min/km</button>
+                                        </div>
+                                    </div>
+
+                                    {selectedTracksData.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-64 bg-white/50 border-2 border-dashed border-gray-300 rounded-2xl text-gray-500 p-6 text-center mt-4">
+                                            <Icons.Compare />
+                                            <p className="mt-4 text-sm font-medium">{t('selectTracksPrompt')}</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* WIDOK POJEDYNCZY */}
+                                            {selectedTracksData.length === 1 && (
+                                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 border-t-4 border-t-[#f97316] mb-6">
+                                                    <div className="border-b border-gray-100 pb-4 mb-5">
+                                                        <h2 className="text-xl font-black text-gray-800 break-words flex items-center gap-2">
+                                                            <span className="w-3 h-3 rounded-full bg-[#f97316] shrink-0"></span> {selectedTracksData[0].name}
+                                                        </h2>
+                                                        <div className="flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-gray-500 mt-2 font-medium">
+                                                            <span className="flex items-center gap-1.5"><Icons.Activity /> {selectedTracksData[0].type}</span>
+                                                            <span className="flex items-center gap-1.5"><Icons.Clock /> {selectedTracksData[0].date}</span>
+                                                            <span className="flex items-center gap-1.5"><Icons.MapPin /> {t('appLabel')}: {selectedTracksData[0].creator.substring(0,25)}</span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{t('distance')}</div>
+                                                            <div className="text-2xl font-black text-gray-800">{selectedTracksData[0].distance} <span className="text-sm">km</span></div>
+                                                        </div>
+                                                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                                                            <div className="text-[11px] text-emerald-600 font-bold uppercase mb-1">{t('ascent')}</div>
+                                                            <div className="text-2xl font-black text-emerald-700">+{selectedTracksData[0].ascent} <span className="text-sm">m</span></div>
+                                                        </div>
+                                                        <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                                                            <div className="text-[11px] text-red-600 font-bold uppercase mb-1">{t('descent')}</div>
+                                                            <div className="text-2xl font-black text-red-700">-{selectedTracksData[0].descent} <span className="text-sm">m</span></div>
+                                                        </div>
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{t('elevation')} (Max/Min)</div>
+                                                            <div className="text-[15px] font-black text-gray-700 mt-1">{selectedTracksData[0].maxEle}m / {selectedTracksData[0].minEle}m</div>
+                                                        </div>
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{t('totalTime')}</div>
+                                                            <div className="text-xl font-black text-gray-800">{formatTime(selectedTracksData[0].totalTimeMs)}</div>
+                                                        </div>
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{t('movingTime')}</div>
+                                                            <div className="text-xl font-black text-gray-800">{formatTime(selectedTracksData[0].movingTimeMs)}</div>
+                                                        </div>
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{speedUnit === 'pace' ? t('avgPace') : t('avgSpeed')}</div>
+                                                            <div className="text-xl font-black text-[#2563eb]">{speedUnit === 'pace' ? formatPace(selectedTracksData[0].avgSpeed) : selectedTracksData[0].avgSpeed} <span className="text-xs">{speedUnit === 'pace' ? 'min/km' : 'km/h'}</span></div>
+                                                        </div>
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-1">{speedUnit === 'pace' ? t('movingPace') : t('movingSpeed')}</div>
+                                                            <div className="text-xl font-black text-[#2563eb]">{speedUnit === 'pace' ? formatPace(selectedTracksData[0].movingAvgSpeed) : selectedTracksData[0].movingAvgSpeed} <span className="text-xs">{speedUnit === 'pace' ? 'min/km' : 'km/h'}</span></div>
+                                                        </div>
+                                                    </div>
+
+                                                    {selectedTracksData[0].hasElevation && (
+                                                        <div className="h-56 md:h-72 w-full bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
+                                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase mb-3">{t('eleProfile')}</h3>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={selectedTracksData[0].elevationProfile}>
+                                                                    <defs>
+                                                                        <linearGradient id="colorEle0" x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor={SELECTED_COLORS[0]} stopOpacity={0.3}/>
+                                                                            <stop offset="95%" stopColor={SELECTED_COLORS[0]} stopOpacity={0}/>
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                    <XAxis dataKey="dist" hide />
+                                                                    <YAxis domain={['auto', 'auto']} fontSize={11} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}m`} width={40} />
+                                                                    <Tooltip labelFormatter={(v) => `${t('distance')}: ${v} km`} formatter={(v) => [`${v} ${t('masl')}`, t('elevation')]} contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}/>
+                                                                    <Area type="monotone" dataKey="ele" stroke={SELECTED_COLORS[0]} fillOpacity={1} fill="url(#colorEle0)" strokeWidth={2} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+
+                                                    {selectedTracksData[0].hasTime && (
+                                                        <div className="h-56 md:h-72 w-full bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase mb-3">{speedUnit === 'pace' ? t('paceProfile') : t('speedProfile')}</h3>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={selectedTracksData[0].elevationProfile}>
+                                                                    <defs>
+                                                                        <linearGradient id="colorSpeed0" x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                                                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                    <XAxis dataKey="dist" hide />
+                                                                    <YAxis domain={['auto', 'auto']} fontSize={11} axisLine={false} tickLine={false} tickFormatter={(v) => speedUnit === 'pace' ? formatPaceFromDecimal(v) : `${v} km/h`} width={45} />
+                                                                    <Tooltip labelFormatter={(v) => `${t('distance')}: ${v} km`} formatter={(v) => [speedUnit === 'pace' ? formatPaceFromDecimal(v) : `${v} km/h`, speedUnit === 'pace' ? t('pace') : t('speed')]} contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}/>
+                                                                    <Area type="monotone" dataKey={speedUnit === 'pace' ? "pace" : "speed"} stroke="#10b981" fillOpacity={1} fill="url(#colorSpeed0)" strokeWidth={2} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* WIDOK PORÓWNANIA */}
+                                            {selectedTracksData.length === 2 && (
+                                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 border-t-4 border-t-[#3b82f6] mb-6">
+                                                    <div className="border-b border-gray-100 pb-4 mb-5">
+                                                        <h2 className="text-xl font-black text-[#f97316] break-words flex items-center gap-2">
+                                                            <span className="w-3 h-3 rounded-full bg-[#f97316] shrink-0"></span> {selectedTracksData[0].name}
+                                                        </h2>
+                                                        <h2 className="text-xl font-black text-[#3b82f6] break-words flex items-center gap-2 mt-2">
+                                                            <span className="w-3 h-3 rounded-full bg-[#3b82f6] shrink-0"></span> {selectedTracksData[1].name}
+                                                        </h2>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                                                        <StatComparisonBox title={t('distance')} t1={selectedTracksData[0].distance} t2={selectedTracksData[1].distance} unit="km" />
+                                                        <StatComparisonBox title={t('ascent')} t1={`+${selectedTracksData[0].ascent}`} t2={`+${selectedTracksData[1].ascent}`} unit="m" />
+                                                        <StatComparisonBox title={t('descent')} t1={`-${selectedTracksData[0].descent}`} t2={`-${selectedTracksData[1].descent}`} unit="m" />
+                                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
+                                                            <div className="text-[11px] text-gray-400 font-bold uppercase mb-2">{t('elevation')} (Max/Min)</div>
+                                                            <div className="text-[15px] font-black text-[#f97316] mb-1">{selectedTracksData[0].maxEle}m / {selectedTracksData[0].minEle}m</div>
+                                                            <div className="text-[15px] font-black text-[#3b82f6]">{selectedTracksData[1].maxEle}m / {selectedTracksData[1].minEle}m</div>
+                                                        </div>
+                                                        <StatComparisonBox title={t('totalTime')} t1={formatTime(selectedTracksData[0].totalTimeMs)} t2={formatTime(selectedTracksData[1].totalTimeMs)} unit="" />
+                                                        <StatComparisonBox title={t('movingTime')} t1={formatTime(selectedTracksData[0].movingTimeMs)} t2={formatTime(selectedTracksData[1].movingTimeMs)} unit="" />
+                                                        <StatComparisonBox title={speedUnit === 'pace' ? t('avgPace') : t('avgSpeed')} t1={speedUnit === 'pace' ? formatPace(selectedTracksData[0].avgSpeed) : selectedTracksData[0].avgSpeed} t2={speedUnit === 'pace' ? formatPace(selectedTracksData[1].avgSpeed) : selectedTracksData[1].avgSpeed} unit={speedUnit === 'pace' ? 'min/km' : 'km/h'} />
+                                                        <StatComparisonBox title={speedUnit === 'pace' ? t('movingPace') : t('movingSpeed')} t1={speedUnit === 'pace' ? formatPace(selectedTracksData[0].movingAvgSpeed) : selectedTracksData[0].movingAvgSpeed} t2={speedUnit === 'pace' ? formatPace(selectedTracksData[1].movingAvgSpeed) : selectedTracksData[1].movingAvgSpeed} unit={speedUnit === 'pace' ? 'min/km' : 'km/h'} />
+                                                    </div>
+
+                                                    {(selectedTracksData[0].hasElevation || selectedTracksData[1].hasElevation) && (
+                                                        <div className="h-64 md:h-80 w-full bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
+                                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase mb-4">{t('mergedEleProfile')}</h3>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={mergedProfile} margin={{top: 0, right: 0, left: -20, bottom: 0}}>
+                                                                    <defs>
+                                                                        <linearGradient id="colorEle1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={SELECTED_COLORS[0]} stopOpacity={0.4}/><stop offset="95%" stopColor={SELECTED_COLORS[0]} stopOpacity={0}/></linearGradient>
+                                                                        <linearGradient id="colorEle2" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={SELECTED_COLORS[1]} stopOpacity={0.4}/><stop offset="95%" stopColor={SELECTED_COLORS[1]} stopOpacity={0}/></linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                    <XAxis dataKey="dist" hide type="number" domain={['dataMin', 'dataMax']} />
+                                                                    <YAxis domain={['auto', 'auto']} fontSize={11} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}m`} />
+                                                                    <Tooltip labelFormatter={(v) => `${t('distance')}: ${Number(v).toFixed(2)} km`} contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}/>
+                                                                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                                                                    <Area type="monotone" name={selectedTracksData[0].name.substring(0,20)} dataKey="ele1" stroke={SELECTED_COLORS[0]} fillOpacity={1} fill="url(#colorEle1)" strokeWidth={2} connectNulls />
+                                                                    <Area type="monotone" name={selectedTracksData[1].name.substring(0,20)} dataKey="ele2" stroke={SELECTED_COLORS[1]} fillOpacity={1} fill="url(#colorEle2)" strokeWidth={2} connectNulls />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+
+                                                    {(selectedTracksData[0].hasTime || selectedTracksData[1].hasTime) && (
+                                                        <div className="h-64 md:h-80 w-full bg-white p-4 rounded-xl border border-gray-100 shadow-sm mt-4">
+                                                            <h3 className="text-[11px] font-bold text-gray-400 uppercase mb-4">{speedUnit === 'pace' ? t('mergedPaceProfile') : t('mergedSpeedProfile')}</h3>
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={mergedProfile} margin={{top: 0, right: 0, left: -20, bottom: 0}}>
+                                                                    <defs>
+                                                                        <linearGradient id="colorSpeed1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={SELECTED_COLORS[0]} stopOpacity={0.4}/><stop offset="95%" stopColor={SELECTED_COLORS[0]} stopOpacity={0}/></linearGradient>
+                                                                        <linearGradient id="colorSpeed2" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={SELECTED_COLORS[1]} stopOpacity={0.4}/><stop offset="95%" stopColor={SELECTED_COLORS[1]} stopOpacity={0}/></linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                                    <XAxis dataKey="dist" hide type="number" domain={['dataMin', 'dataMax']} />
+                                                                    <YAxis domain={['auto', 'auto']} fontSize={11} axisLine={false} tickLine={false} tickFormatter={(v) => speedUnit === 'pace' ? formatPaceFromDecimal(v) : `${v} km/h`} width={45} />
+                                                                    <Tooltip labelFormatter={(v) => `${t('distance')}: ${Number(v).toFixed(2)} km`} formatter={(v) => [speedUnit === 'pace' ? formatPaceFromDecimal(v) : `${v} km/h`, speedUnit === 'pace' ? t('pace') : t('speed')]} contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px' }}/>
+                                                                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                                                                    <Area type="monotone" name={selectedTracksData[0].name.substring(0,20)} dataKey={speedUnit === 'pace' ? "pace1" : "speed1"} stroke={SELECTED_COLORS[0]} fillOpacity={1} fill="url(#colorSpeed1)" strokeWidth={2} connectNulls />
+                                                                    <Area type="monotone" name={selectedTracksData[1].name.substring(0,20)} dataKey={speedUnit === 'pace' ? "pace2" : "speed2"} stroke={SELECTED_COLORS[1]} fillOpacity={1} fill="url(#colorSpeed2)" strokeWidth={2} connectNulls />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* WIDOK 3: PODSUMOWANIE */}
+                                <div className={`w-full max-w-5xl mx-auto p-4 sm:p-6 md:p-8 ${activeTab === 'summary' ? 'block' : 'hidden'} ${isFullscreen ? 'pt-24' : ''}`}>
+                                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 mb-6">
+                                        <h2 className="text-lg font-black text-gray-800 mb-6 flex items-center gap-2">
+                                            <Icons.Activity /> {t('generalStats')}
+                                        </h2>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                                                <div className="text-[11px] font-bold text-blue-600 uppercase mb-1">{t('totalDist')}</div>
+                                                <div className="text-2xl font-black text-blue-800">{stats.dist} <span className="text-sm">km</span></div>
+                                            </div>
+                                            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                                                <div className="text-[11px] font-bold text-emerald-600 uppercase mb-1">{t('totalAsc')}</div>
+                                                <div className="text-2xl font-black text-emerald-800">+{stats.asc} <span className="text-sm">m</span></div>
+                                            </div>
+                                            <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                                                <div className="text-[11px] font-bold text-purple-600 uppercase mb-1">{t('timeOnTrack')}</div>
+                                                <div className="text-xl font-black text-purple-800 pt-1">{stats.time}</div>
+                                            </div>
+                                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                                <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">{t('activityCount')}</div>
+                                                <div className="text-2xl font-black text-gray-800">{stats.count}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {filteredTracks.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 md:col-span-1">
+                                                <h3 className="font-bold text-gray-700 text-sm mb-4">{t('activityBreakdown')}</h3>
+                                                <div className="h-48 min-h-[200px] w-full">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={Object.entries(filteredTracks.reduce((acc, trk) => { acc[trk.type] = (acc[trk.type] || 0) + 1; return acc; }, {})).map(([n, v]) => ({name: n, value: v}))} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={5} dataKey="value">
+                                                                {availableTypes.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
+                                                            </Pie>
+                                                            <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} />
+                                                            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }}/>
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 md:col-span-2">
+                                                <h3 className="font-bold text-gray-700 text-sm mb-4">{t('historyChart')}</h3>
+                                                <div className="h-48 min-h-[200px] w-full">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={filteredTracks.slice().reverse().map(trk => ({...trk, numericDistance: parseFloat(trk.distance)}))} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
+                                                            <XAxis dataKey="date" fontSize={10} tickFormatter={v => v.split(' ')[0]} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                                                            <YAxis domain={[0, 'dataMax']} fontSize={11} axisLine={false} tickLine={false} />
+                                                            <Tooltip contentStyle={{ borderRadius: '8px', fontSize: '12px' }} formatter={(v) => [`${v} km`, t('distance')]} />
+                                                            <Bar dataKey="numericDistance" name={t('distance')} fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </section>
+                    </main>
+
+                    {/* MOBILE BOTTOM NAVIGATION */}
+                    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-[65px] pb-safe shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-[5000]">
+                        <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'list' ? 'text-blue-600' : 'text-gray-400'}`}>
+                            <Icons.List /><span className="text-[10px] font-bold">{t('tabList')}</span>
+                        </button>
+                        <button onClick={() => setActiveTab('map')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'map' ? 'text-blue-600' : 'text-gray-400'}`}>
+                            <Icons.MapPin /><span className="text-[10px] font-bold">{t('tabMap')}</span>
+                        </button>
+                        <button onClick={() => setActiveTab('details')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'details' ? 'text-blue-600' : 'text-gray-400'}`}>
+                            <Icons.TrendingUp /><span className="text-[10px] font-bold">{t('tabTrack')} {selectedTrackIds.length > 0 && `(${selectedTrackIds.length})`}</span>
+                        </button>
+                        <button onClick={() => setActiveTab('summary')} className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${activeTab === 'summary' ? 'text-blue-600' : 'text-gray-400'}`}>
+                            <Icons.PieChart /><span className="text-[10px] font-bold">{t('tabStats')}</span>
+                        </button>
+                    </div>
+
+                    {/* MODALS (ZAPIS / ŁADOWANIE) */}
+                    {showSaveModal && (
+                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl max-w-sm w-full">
+                                <h3 className="text-lg font-black mb-2 text-gray-800">{t('saveModalTitle')}</h3>
+                                <p className="text-[13px] text-gray-500 mb-6">{t('saveModalDesc')}</p>
+                                <div className="relative mb-6 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden focus-within:border-blue-500">
+                                    <input type="text" className="w-full p-3 outline-none bg-transparent font-medium" placeholder={t('fileNamePlaceholder')} value={saveFileName} onChange={e => setSaveFileName(e.target.value)} autoFocus />
+                                    <span className="text-gray-400 font-bold select-none pr-4">.json</span>
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={() => setShowSaveModal(false)} className="px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">{t('btnCancel')}</button>
+                                    <button onClick={confirmExport} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors flex items-center gap-2"><Icons.Save /> {t('btnSaveDisk')}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {uploadStatus.isUploading && (
+                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center">
+                                <div className="flex justify-center mb-4 text-[#10b981] animate-bounce"><Icons.Upload /></div>
+                                <h3 className="text-lg font-black mb-1 text-gray-800">{t('uploadingTracks')}</h3>
+                                <p className="text-sm font-bold text-[#10b981] mb-5">{uploadStatus.current} <span className="text-gray-400 font-medium">{t('outOf')}</span> {uploadStatus.total}</p>
+                                <div className="w-full bg-gray-100 rounded-full h-3 mb-3 overflow-hidden shadow-inner">
+                                    <div className="bg-[#10b981] h-3 rounded-full transition-all duration-200 ease-out" style={{ width: `${Math.round((uploadStatus.current / uploadStatus.total) * 100)}%` }}></div>
+                                </div>
+                                <p className="text-xs text-gray-400">{t('uploadWait')}</p>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {importStatus.isImporting && (
+                        <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+                            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center">
+                                <div className="flex justify-center mb-4 text-[#6366f1] animate-pulse"><Icons.FolderPlus /></div>
+                                <h3 className="text-lg font-black mb-1 text-gray-800">{t('importingProject')}</h3>
+                                <p className="text-sm font-bold text-[#6366f1] mb-5">{importStatus.progress}%</p>
+                                <div className="w-full bg-gray-100 rounded-full h-3 mb-3 overflow-hidden shadow-inner">
+                                    <div className="bg-[#6366f1] h-3 rounded-full transition-all duration-200 ease-out" style={{ width: `${importStatus.progress}%` }}></div>
+                                </div>
+                                <p className="text-xs text-gray-400">{t('importWait')}</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

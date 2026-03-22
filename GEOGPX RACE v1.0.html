@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GEOGPX RACE v1.0</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="tailwind.js"></script>
+    
+    <!-- Leaflet CSS i JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        .map-container-wrapper { position: relative; width: 100%; flex: 1 1 0; min-height: 300px; border-radius: 0.75rem; overflow: hidden; border: 2px solid #e2e8f0; background: #f8fafc; }
+        
+        /* Canvas Map (Scan) */
+        #canvasContainer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10; background: #f8fafc; visibility: hidden; }
+        #canvasContainer canvas { max-width: 100%; height: auto; touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab; }
+        #canvasContainer canvas:active { cursor: grabbing; }
+        #canvasContainer canvas.calibrating { cursor: crosshair !important; }
+
+        /* Online Map View */
+        #viewMapContainer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 5; visibility: visible; }
+        #viewMap { width: 100%; height: 100%; }
+
+        /* Modal Pick Map */
+        #leafletMap { width: 100%; height: 100%; }
+        
+        #logConsole { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
+
+        .btn-tool {
+            display: flex; align-items: center; justify-content: center; gap: 0.25rem;
+            background-color: white; border: 1px solid #cbd5e1; border-radius: 0.5rem;
+            transition: all 0.2s; touch-action: manipulation;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05); color: #475569; padding: 0.5rem 0.75rem; font-size: 0.875rem; font-weight: 600;
+        }
+        .btn-tool:hover { background-color: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
+        .btn-tool:active { transform: scale(0.95); }
+        .btn-nudge-tiny { width: 2.2rem; height: 2.2rem; font-size: 1rem; }
+        
+        input[readonly] { background-color: #f8fafc; color: #94a3b8; cursor: not-allowed; }
+
+        /* Player range slider custom styling */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #cbd5e1; border-radius: 3px; }
+        
+        .view-toggle-active { background-color: #3b82f6 !important; color: white !important; border-color: #2563eb !important; }
+
+        /* Fullscreen styles */
+        #fullscreenArea { background-color: inherit; }
+        #fullscreenArea:fullscreen {
+            padding: 1rem;
+            background-color: #f8fafc;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #fullscreenArea:fullscreen .map-container-wrapper {
+            flex-grow: 1;
+            height: auto;
+            min-height: 0;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-[13px] text-slate-800 p-2 md:p-4 relative min-h-screen flex flex-col">
+
+    <!-- MAIN CONTAINER - Flex-grow allows it to fill the screen, width expanded to 1600px -->
+    <div class="w-full max-w-[1600px] mx-auto bg-white p-3 md:p-5 rounded-xl shadow-xl mt-4 md:mt-0 flex flex-col flex-1">
+        <h1 class="text-[19px] md:text-2xl font-extrabold mb-1.5 text-blue-600 shrink-0" data-i18n="appTitle">GEOGPX RACE v1.0</h1>
+        <p class="text-slate-500 mb-4 text-[12px] shrink-0" data-i18n="appDesc">Wgraj wiele śladów GPX i porównuj jak zawodnicy poruszali się na trasie. Animuj wyścig na skanie mapy lub mapie online!</p>
+
+        <!-- Górny pasek kontrolny -->
+
+        <div class="sticky top-0 z-40 mb-5 bg-slate-50/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-end gap-3 shadow-md shrink-0">
+            <div class="w-full md:flex-grow">
+                <label for="projectName" class="block text-[12px] font-bold text-slate-700 mb-1.5" data-i18n="projNameLabel">Nazwa projektu:</label>
+                <input type="text" id="projectName" placeholder="Wyscig_2026" class="w-full text-[12px] border border-slate-300 p-1.5 rounded-md focus:ring-2 focus:ring-blue-500 outline-none transition bg-white">
+            </div>
+            
+            <div class="w-full md:w-auto flex flex-col sm:flex-row gap-2 shrink-0">
+                <!-- Odtwórz -->
+                <label class="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-1.5 px-3.5 rounded-lg transition shadow-sm cursor-pointer flex items-center justify-center gap-1.5 text-[11px]">
+                    📂 <span data-i18n="loadJsonLbl">Wczytaj Projekt</span>
+                    <input type="file" id="projectInput" accept=".json" class="hidden">
+                </label>
+                <!-- Zapisz -->
+                <button id="btnExport" class="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-white font-bold py-1.5 px-3.5 rounded-lg transition shadow-sm flex items-center justify-center gap-1.5 text-[11px]">
+                    💾 <span data-i18n="btnExport">Zapisz Projekt</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 flex-1 min-h-0">
+            
+            <!-- Panel boczny -->
+            <div class="lg:col-span-3 space-y-4 overflow-y-auto pr-1 pb-2">
+                
+                <!-- Sekcja 1: Wgrywanie (Ulepszona ekspozycja GPX) -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-[15px] border-b pb-1.5 flex items-center gap-2">
+                        <span class="bg-blue-100 text-blue-700 w-5 h-5 rounded-full flex items-center justify-center text-[11px]">1</span> 
+                        <span data-i18n="sec1Title">Wgraj Pliki</span>
+                    </h3>
+                    
+                    <!-- GŁÓWNA FUNKCJA: Wgrywanie GPX -->
+                    <div class="bg-white p-3 rounded-xl border-[2px] border-emerald-500 shadow-sm relative transition-all hover:shadow-md mt-1">
+                        <div class="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-black px-2 py-1 rounded-bl-lg uppercase tracking-wider" data-i18n="mainFeature">Główna Funkcja</div>
+                        
+                        <label class="block text-[13px] font-black text-emerald-800 mb-1.5 flex items-center gap-1.5 mt-1">
+                            <span class="text-xl drop-shadow-sm">🗺️</span> <span data-i18n="gpxRefLbl">Ślady trasy (.gpx - można wiele)</span>
+                        </label>
+                        <p class="text-[10px] text-slate-500 mb-2 leading-relaxed font-medium" data-i18n="gpxRefSub">Wgraj jeden lub więcej plików z trasami, aby przeanalizować je w systemie i nałożyć na mapę.</p>
+                        
+                        <div class="bg-emerald-50/70 border border-emerald-200 rounded-lg p-1">
+                            <input type="file" id="gpxInput" accept=".gpx" multiple class="block w-full text-[11px] text-emerald-800 cursor-pointer file:cursor-pointer file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-emerald-500 file:text-white hover:file:bg-emerald-600 transition-colors focus:outline-none">
+                        </div>
+                        
+                        <!-- Lista Śladów ze statystykami -->
+                        <div id="gpxListContainer" class="mt-2 space-y-1.5 empty:hidden max-h-[250px] overflow-y-auto pr-1"></div>
+                    </div>
+
+                    <div class="flex items-center justify-center my-0.5 mt-2">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest" data-i18n="orText">--- opcjonalnie ---</span>
+                    </div>
+
+                    <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1" data-i18n="mapScanLbl">Skan Mapy (JPG/PNG/PDF)</label>
+                        <input type="file" id="mapImageInput" accept="image/*,application/pdf" class="w-full text-[11px] border border-slate-300 p-1.5 rounded-md focus:ring-2 focus:ring-slate-400 outline-none transition bg-white cursor-pointer">
+                        <div id="mapFileNameLabel" class="text-[9.5px] text-emerald-600 font-bold mt-1 empty:hidden truncate"></div>
+                    </div>
+                </div>
+
+                <!-- Sekcja 2: Kalibracja -->
+                <div class="space-y-2.5">
+                    <h3 class="font-bold text-[15px] border-b pb-1.5 flex items-center gap-2">
+                        <span class="bg-blue-100 text-blue-700 w-5 h-5 rounded-full flex items-center justify-center text-[11px]">2</span> 
+                        <span data-i18n="sec2Title">Kalibracja (Dla Skanu)</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-500 leading-relaxed" data-i18n="sec2Desc">Wymagane tylko jeśli używasz wgranego skanu mapy. Jeśli używasz Mapy Online, zignoruj to.</p>
+                    
+                    <div id="p1InputGroup" class="bg-blue-50 p-2.5 rounded-lg border border-blue-100 transition-all duration-300 mb-1.5">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[12px] font-black text-blue-700" data-i18n="point1">PUNKT 1</span>
+                                <button id="btnUnlockP1" class="text-[10px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0 rounded shadow-sm transition">🔒</button>
+                            </div>
+                            <span id="p1Check" class="hidden text-emerald-600 font-bold text-[9px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <input type="number" id="p1Lat" data-i18n-ph="latPlaceholder" placeholder="Szer. (Lat)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                            <input type="number" id="p1Lon" data-i18n-ph="lonPlaceholder" placeholder="Dł. (Lon)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                        </div>
+                        <div id="p1Status" class="text-[9px] text-slate-500 mt-1 font-medium" data-i18n="scanNone">Skan: Brak</div>
+                    </div>
+
+                    <div id="p2InputGroup" class="bg-purple-50 p-2.5 rounded-lg border border-purple-100 transition-all duration-300 mb-1.5">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[12px] font-black text-purple-700" data-i18n="point2">PUNKT 2</span>
+                                <button id="btnUnlockP2" class="text-[10px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0 rounded shadow-sm transition">🔒</button>
+                            </div>
+                            <span id="p2Check" class="hidden text-emerald-600 font-bold text-[9px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <input type="number" id="p2Lat" data-i18n-ph="latPlaceholder" placeholder="Szer. (Lat)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                            <input type="number" id="p2Lon" data-i18n-ph="lonPlaceholder" placeholder="Dł. (Lon)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                        </div>
+                        <div id="p2Status" class="text-[9px] text-slate-500 mt-1 font-medium" data-i18n="scanNone">Skan: Brak</div>
+                    </div>
+                    
+                    <div id="p3InputGroup" class="bg-orange-50 p-2.5 rounded-lg border border-orange-100 transition-all duration-300">
+                        <div class="flex justify-between items-center mb-1.5">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[12px] font-black text-orange-700" data-i18n="point3">PUNKT 3</span>
+                                <button id="btnUnlockP3" class="text-[10px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0 rounded shadow-sm transition">🔒</button>
+                            </div>
+                            <span id="p3Check" class="hidden text-emerald-600 font-bold text-[9px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <input type="number" id="p3Lat" data-i18n-ph="latPlaceholder" placeholder="Szer. (Lat)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                            <input type="number" id="p3Lon" data-i18n-ph="lonPlaceholder" placeholder="Dł. (Lon)" class="w-full p-1.5 text-[10px] border border-slate-300 rounded transition" step="0.00000001" readonly>
+                        </div>
+                        <div id="p3Status" class="text-[9px] text-slate-500 mt-1 font-medium" data-i18n="scanNone">Skan: Brak</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Obszar roboczy z mapą i ANIMATOREM -->
+            <div class="lg:col-span-9 flex flex-col relative min-h-[500px] h-full">
+                
+                <!-- Pasek wyznaczania punktów kalibracji -->
+                <div class="w-full flex flex-col md:flex-row gap-2 mb-2 bg-white p-2 rounded-xl shadow-sm border border-slate-200 shrink-0" id="calibrationToolbar" style="display: none;">
+                    <div id="p1Toolbar" class="flex-1 bg-white border border-slate-200 p-1.5 rounded-md transition-all duration-300">
+                        <div class="flex justify-between items-center mb-1.5 px-1">
+                            <span class="text-[10.8px] font-bold text-blue-700" data-i18n="point1">PUNKT 1</span>
+                            <span id="p1ToolbarCheck" class="hidden text-emerald-500 font-extrabold text-[12.6px]">✓</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button id="btnSetP1ImgTop" class="flex-1 text-[9.9px] font-medium bg-slate-100 hover:bg-blue-50 border border-slate-200 text-slate-600 px-1 py-1 rounded transition" data-i18n="scanBtn">🖱️ Skan</button>
+                            <button id="btnSetP1MapTop" class="flex-1 text-[9.9px] font-medium bg-blue-600 hover:bg-blue-700 text-white px-1 py-1 rounded transition shadow-sm" data-i18n="mapBtn">🌍 Mapa</button>
+                        </div>
+                    </div>
+                    <div id="p2Toolbar" class="flex-1 bg-white border border-slate-200 p-1.5 rounded-md transition-all duration-300">
+                        <div class="flex justify-between items-center mb-1.5 px-1">
+                            <span class="text-[10.8px] font-bold text-purple-700" data-i18n="point2">PUNKT 2</span>
+                            <span id="p2ToolbarCheck" class="hidden text-emerald-500 font-extrabold text-[12.6px]">✓</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button id="btnSetP2ImgTop" class="flex-1 text-[9.9px] font-medium bg-slate-100 hover:bg-purple-50 border border-slate-200 text-slate-600 px-1 py-1 rounded transition" data-i18n="scanBtn">🖱️ Skan</button>
+                            <button id="btnSetP2MapTop" class="flex-1 text-[9.9px] font-medium bg-blue-600 hover:bg-blue-700 text-white px-1 py-1 rounded transition shadow-sm" data-i18n="mapBtn">🌍 Mapa</button>
+                        </div>
+                    </div>
+                    <div id="p3Toolbar" class="flex-1 bg-white border border-slate-200 p-1.5 rounded-md transition-all duration-300">
+                        <div class="flex justify-between items-center mb-1.5 px-1">
+                            <span class="text-[10.8px] font-bold text-orange-700" data-i18n="point3">PUNKT 3</span>
+                            <span id="p3ToolbarCheck" class="hidden text-emerald-500 font-extrabold text-[12.6px]">✓</span>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <button id="btnSetP3ImgTop" class="flex-1 text-[9.9px] font-medium bg-slate-100 hover:bg-orange-50 border border-slate-200 text-slate-600 px-1 py-1 rounded transition" data-i18n="scanBtn">🖱️ Skan</button>
+                            <button id="btnSetP3MapTop" class="flex-1 text-[9.9px] font-medium bg-blue-600 hover:bg-blue-700 text-white px-1 py-1 rounded transition shadow-sm" data-i18n="mapBtn">🌍 Mapa</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FULLSCREEN WRAPPER -->
+                <div id="fullscreenArea" class="w-full flex flex-col gap-3 transition-all duration-300 rounded-xl flex-1 min-h-0">
+                    
+                    <!-- Przełącznik Widoku (Toggle) -->
+                    <div class="w-full flex justify-between items-center bg-slate-100 p-1.5 rounded-md border border-slate-200 mb-1 shrink-0">
+                        <div class="flex gap-1.5 w-full sm:w-auto">
+                            <button id="btnViewOnline" class="view-toggle-active px-3 py-1.5 rounded text-[11px] font-bold text-slate-600 bg-white border border-slate-300 transition hover:bg-slate-200 w-full sm:w-auto flex items-center justify-center gap-1.5">
+                                🌍 <span data-i18n="viewOnline">Mapa Online</span>
+                            </button>
+                            <button id="btnViewScan" class="px-3 py-1.5 rounded text-[11px] font-bold text-slate-600 bg-white border border-slate-300 transition w-full sm:w-auto flex items-center justify-center gap-1.5">
+                                🖼️ <span data-i18n="viewScan">Wgrany Skan</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- KONTENER NA MAPY (Canvas / Leaflet) -->
+                    <div class="map-container-wrapper shadow-inner flex-1 relative" id="mainMapWrapper">
+                        
+                        <!-- Przyciski Narzędziowe Mapy (HUD Top Right) -->
+                        <div class="absolute top-2 right-2 md:top-3 md:right-3 z-[1000] flex flex-col gap-1.5">
+                            <button id="btnFullscreen" class="bg-slate-800/90 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg transition shadow-md font-bold flex items-center justify-center gap-1.5 backdrop-blur-md border border-slate-600 text-[10.8px]">
+                                🔲 <span data-i18n="fullscreenBtn">Pełny ekran</span>
+                            </button>
+                            <button id="btnZoomTracks" class="bg-white/90 hover:bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg transition shadow-md font-bold flex items-center justify-center gap-1.5 backdrop-blur-md border border-slate-300 text-[10.8px]">
+                                🔍 <span data-i18n="zoomTracksBtn">Pokaż trasy</span>
+                            </button>
+                            <button id="btnCenterImage" class="bg-white/90 hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg transition shadow-md font-bold flex items-center justify-center gap-1.5 backdrop-blur-md border border-slate-300 text-[10.8px]" style="display: none;">
+                                ⌖ <span data-i18n="centerScanBtn">Wyśrodkuj skan</span>
+                            </button>
+                        </div>
+
+                        <!-- Widok Canvas -->
+                        <div id="canvasContainer">
+                            <canvas id="mapCanvas"></canvas>
+                        </div>
+                        <!-- Widok Leaflet Online -->
+                        <div id="viewMapContainer">
+                            <div id="viewMap"></div>
+                        </div>
+                        
+                        <!-- PANEL ODTWARZACZA ANIMACJI (HUD Bottom Kompaktowy) -->
+                        <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[95%] sm:max-w-3xl z-[1000]">
+                            <div class="bg-white/95 backdrop-blur-md px-2 py-1.5 rounded-xl shadow-lg border border-slate-200 flex flex-nowrap overflow-x-auto items-center gap-1.5 md:gap-3 transition-all w-full select-none">
+                                
+                                <!-- Kontrolki Play/Stop -->
+                                <div class="flex gap-1 shrink-0">
+                                    <button id="btnPlayPause" class="bg-blue-600 hover:bg-blue-700 text-white w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>▶</button>
+                                    <button id="btnStop" class="bg-slate-100 hover:bg-slate-200 text-slate-700 w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center font-bold text-sm border border-slate-200 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>⏹</button>
+                                </div>
+                
+                                <!-- Oś czasu (Slider) -->
+                                <div class="flex-grow flex items-center min-w-0">
+                                    <input type="range" id="timeSlider" min="0" max="1000" value="0" class="w-full cursor-pointer h-1.5 bg-slate-200 rounded-lg appearance-none" disabled>
+                                </div>
+                
+                                <!-- Info (Czas & Prędkość) - Wymuszona linia -->
+                                <div class="flex flex-row items-center gap-1.5 shrink-0">
+                                    <span id="timeDisplay" class="font-mono font-bold text-[10px] bg-slate-800 text-amber-400 px-1.5 py-0.5 rounded shadow-inner text-center min-w-[65px]">00:00:00</span>
+                                    
+                                    <div class="flex items-center bg-slate-100 border border-slate-200 px-1 py-0.5 rounded">
+                                        <span class="text-[8px] font-bold text-slate-500 uppercase mr-1 hidden sm:inline" data-i18n="speedLbl">Prędkość:</span>
+                                        <select id="selSpeed" class="bg-transparent font-bold text-slate-700 text-[9px] outline-none cursor-pointer">
+                                            <option value="1">1x</option>
+                                            <option value="10">10x</option>
+                                            <option value="60" selected>60x</option>
+                                            <option value="300">300x</option>
+                                            <option value="500">500x</option>
+                                            <option value="1000">1000x</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div> <!-- End of Fullscreen Wrapper -->
+
+            </div>
+        </div>
+        
+        <!-- Konsola Statusu -->
+        <div class="w-full mt-4 bg-slate-800 rounded-lg p-3 shadow-inner shrink-0">
+            <p class="text-[9px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider" data-i18n="statusTitle">Status Systemu</p>
+            <div id="logConsole" class="text-sky-400 text-[10px] max-h-20 overflow-y-auto pr-2"></div>
+        </div>
+        
+        <div class="mt-3 pt-3 border-t border-slate-200 text-center text-slate-400 text-[10.8px] font-medium tracking-wide shrink-0">
+            GEOGPX RACE&reg; design by Piotr Pallach 2026
+        </div>
+    </div>
+
+    <!-- MODAL DO WYBORU WSPÓŁRZĘDNYCH Z MAPY (Dla kalibracji skanu) -->
+    <div id="mapModal" class="fixed inset-0 bg-slate-900/80 hidden z-[60] flex items-center justify-center p-2 md:p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl w-full max-w-4xl h-[85vh] md:h-[80vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-slate-800 p-3 flex justify-between items-center text-white">
+                <div>
+                    <h3 class="font-bold text-[16px] md:text-[18px] flex items-center gap-2">
+                        <span id="modalPointBadge" class="bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded font-black">P1</span>
+                        <span id="modalTitle" data-i18n="modalMapTitle">Wskaż punkt na mapie</span>
+                    </h3>
+                </div>
+                <button id="btnCloseModal" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md font-bold transition text-[11px]" data-i18n="btnCancel">Anuluj</button>
+            </div>
+            <div id="leafletMap" class="w-full flex-grow cursor-crosshair"></div>
+        </div>
+    </div>
+
+    <!-- MODAL ALERTU (NAZWIJ PROJEKT) -->
+    <div id="alertModal" class="fixed inset-0 bg-slate-900/80 hidden z-[60] flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-xl p-5 max-w-sm w-full text-center shadow-xl border border-slate-200 transform transition-transform">
+            <div class="text-3xl mb-2">⚠️</div>
+            <h3 class="text-[18px] font-black text-slate-800 mb-1.5" data-i18n="alertNoNameTitle">Brak nazwy</h3>
+            <p class="text-rose-600 mb-4 font-bold text-[15px]" data-i18n="alertNoNameDesc">NAZWIJ PROJEKT</p>
+            <button onclick="document.getElementById('alertModal').classList.add('hidden')" class="w-full bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-bold transition shadow-sm text-[12px]" data-i18n="btnUnderstand">Zrozumiałem</button>
+        </div>
+    </div>
+
+    <script>
+        // --- I18N (TŁUMACZENIA) ---
+        const i18n = {
+            pl: {
+                appTitle: "GEOGPX RACE v1.0",
+                appDesc: "Wgraj wiele śladów GPX i porównuj jak zawodnicy poruszali się na trasie. Animuj wyścig na skanie mapy lub mapie online!",
+                projNameLabel: "Nazwa projektu:",
+                sec1Title: "Wgraj Pliki", loadJsonLbl: "Wczytaj Projekt",
+                orText: "--- opcjonalnie ---", mapScanLbl: "Skan Mapy (JPG/PNG/PDF)",
+                mainFeature: "Główna Funkcja",
+                gpxRefLbl: "Ślady trasy (.gpx - można wiele)",
+                gpxRefSub: "Wgraj jeden lub więcej plików z trasami, aby przeanalizować je w systemie i nałożyć na mapę.",
+                sec2Title: "Kalibracja (Dla Skanu)", sec2Desc: "Wymagane tylko jeśli używasz wgranego skanu mapy. Jeśli używasz Mapy Online, zignoruj to.",
+                point1: "PUNKT 1", point2: "PUNKT 2", point3: "PUNKT 3",
+                loaded: "✓ WGRANY", scanNone: "Skan: Brak", scanBtn: "🖱️ Skan", mapBtn: "🌍 Mapa", scanBtnActive: "✔️ Skan", mapBtnActive: "✔️ Mapa",
+                latPlaceholder: "Szer. (Lat)", lonPlaceholder: "Dł. (Lon)",
+                viewScan: "Wgrany Skan", viewOnline: "Mapa Online", centerScanBtn: "Wyśrodkuj skan", zoomTracksBtn: "Pokaż trasy",
+                fullscreenBtn: "Pełny ekran", exitFullscreenBtn: "Zamknij ekran", btnHome: "Strona Główna",
+                animatorTitle: "Odtwarzacz:", speedLbl: "Prędkość:",
+                statusTitle: "Status Systemu", 
+                sec3Title: "Zapisz wynik", sec3Desc: "Zapisz projekt do pliku JSON, aby powrócić do analizy wyścigu w przyszłości.",
+                btnExport: "Zapisz Projekt",
+                modalMapTitle: "Wskaż punkt na mapie", btnCancel: "Anuluj",
+                alertNoNameTitle: "Brak nazwy", alertNoNameDesc: "NAZWIJ PROJEKT", btnUnderstand: "Zrozumiałem",
+                sysReady: "Gotowy do pracy. Wgraj pliki śladów GPX.", errScript: "Błąd skryptu:", errLoadPdf: "Błąd PDF:", errNotImage: "Plik nie jest obrazem.",
+                errGpx: "Błąd pliku GPX:", errJsonParse: "Błąd odczytu projektu JSON.",
+                loadedMap: "Wczytano mapę:", loadedProj: "Pomyślnie wczytano projekt!",
+                loadedGpx: "Odczytano trasę:", loadedGpxNone: "Brak punktów w GPX.",
+                needPoints: "Wymagane 3 punkty kalibracji, by poprawnie rysować na skanie.",
+                needPointsToZoom: "Ustaw min. 2 punkty kalibracji, aby przybliżyć do tras na skanie.",
+                animStart: "Symulacja gotowa.", calibSys: "Silnik:",
+                projectStarted: "Rozpoczęto projekt:", confirmRestart: "Czy na pewno usunąć wszystkie dane?",
+                confirmMapChange: "Zmienić współrzędne?", confirmImgChange: "Wskazać punkt ponownie na skanie?",
+                clickImgToSet: "Kliknij na skanie, by ustawić", pointRecorded: "Zanotowano.", centered: "Wyśrodkowano.", centeredTracks: "Przybliżono do tras.",
+                nameProjectExport: "NAZWIJ PROJEKT przed eksportem.", exportOk: "Zapisano JSON.", exportFallback: "Wyeksportowano (Pobieranie).",
+                statDist: "Dystans", statTime: "Czas całkowity", statSpeed: "Średnia prędkość", setWinner: "Oznacz jako Zwycięzcę"
+            },
+            en: {
+                appTitle: "GEOGPX RACE v1.0",
+                appDesc: "Upload multiple GPX tracks and compare competitor movement. Animate the race on a map scan or online map!",
+                projNameLabel: "Project Name:",
+                sec1Title: "Upload Files", loadJsonLbl: "Load Project",
+                orText: "--- optionally ---", mapScanLbl: "Map Scan (JPG/PNG/PDF)",
+                mainFeature: "Main Feature",
+                gpxRefLbl: "Track files (.gpx - multiple allowed)",
+                gpxRefSub: "Upload one or more track files to analyze them in the system and overlay on the map.",
+                sec2Title: "Calibration (For Scan)", sec2Desc: "Required only if using a scanned map. Ignore if using Online Map.",
+                point1: "POINT 1", point2: "POINT 2", point3: "POINT 3",
+                loaded: "✓ LOADED", scanNone: "Scan: None", scanBtn: "🖱️ Scan", mapBtn: "🌍 Map", scanBtnActive: "✔️ Scan", mapBtnActive: "✔️ Map",
+                latPlaceholder: "Latitude", lonPlaceholder: "Longitude",
+                viewScan: "Map Scan", viewOnline: "Online Map", centerScanBtn: "Center Scan", zoomTracksBtn: "Show Tracks",
+                fullscreenBtn: "Fullscreen", exitFullscreenBtn: "Exit Fullscreen", btnHome: "Home",
+                animatorTitle: "Player:", speedLbl: "Speed:",
+                statusTitle: "System Status", 
+                sec3Title: "Save Results", sec3Desc: "Save the project to a JSON file to return to your race analysis later.",
+                btnExport: "Save Project",
+                modalMapTitle: "Pick point on map", btnCancel: "Cancel",
+                alertNoNameTitle: "Name Missing", alertNoNameDesc: "NAME YOUR PROJECT", btnUnderstand: "I Understand",
+                sysReady: "Ready to work. Upload GPX tracks.", errScript: "Script Error:", errLoadPdf: "PDF Error:", errNotImage: "Not an image.",
+                errGpx: "GPX Error:", errJsonParse: "JSON Project read error.",
+                loadedMap: "Loaded map:", loadedProj: "Project loaded successfully!",
+                loadedGpx: "Track read:", loadedGpxNone: "No points in GPX.",
+                needPoints: "Need 3 calibration points to draw on scan accurately.",
+                needPointsToZoom: "Set min. 2 calib points to zoom tracks on scan.",
+                animStart: "Simulation ready.", calibSys: "Engine:",
+                projectStarted: "Project started:", confirmRestart: "Delete all data?",
+                confirmMapChange: "Change coordinates?", confirmImgChange: "Pick point on scan again?",
+                clickImgToSet: "Click on scan to set", pointRecorded: "Recorded.", centered: "Map centered.", centeredTracks: "Zoomed to tracks.",
+                nameProjectExport: "NAME PROJECT before exporting.", exportOk: "JSON saved.", exportFallback: "Exported (Download).",
+                statDist: "Distance", statTime: "Total time", statSpeed: "Avg speed", setWinner: "Set as Winner"
+            }
+        };
+
+        let currentLang = 'pl';
+        function T(key) { return i18n[currentLang][key] || key; }
+
+        function changeLanguage(lang) {
+            currentLang = lang;
+            document.querySelectorAll('[data-i18n]').forEach(el => { el.innerText = T(el.getAttribute('data-i18n')); });
+            document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = T(el.getAttribute('data-i18n-html')); });
+            document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = T(el.getAttribute('data-i18n-ph')); });
+            updateGpxListUI(); 
+            updateUI();
+        }
+
+        window.onerror = function(message, source, lineno) { logError(`${T("errScript")} ${message} (L:${lineno})`); return false; };
+        function setStatus(msg) { document.getElementById('logConsole').innerHTML = `<span class="text-emerald-400 font-bold">[OK]</span> ${msg}`; }
+        function logError(msg) { document.getElementById('logConsole').innerHTML = `<span class="text-rose-400 font-bold">[!]</span> ${msg}`; }
+
+        // --- ZMIENNE GLOBALNE MAPY ---
+        let mapImage = null; let mapFileName = ""; 
+        let calibMode = 0; let p1Px = null; let p2Px = null; let p3Px = null;
+        let activeView = 'online'; 
+
+        // Nawigacja Skanu
+        let transform = { x: 0, y: 0, scale: 1 }; let isDraggingMap = false; let dragStartMap = { x: 0, y: 0 };
+        let initialPinchDistance = null; let lastPinchCenter = null; let draggedPoint = null;
+
+        // Leaflet
+        let refMap = null; let refMarker = null; let activePointForMap = 0;
+        let viewMap = null; 
+
+        // --- ZMIENNE ANIMATORA GPX ---
+        let tracks = []; 
+        const trackColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#06b6d4', '#f43f5e', '#14b8a6'];
+        
+        let globalMinTime = Infinity;
+        let globalMaxTime = -Infinity;
+        let currentAnimTime = 0;
+        
+        let isPlaying = false;
+        let playbackSpeed = 60; 
+        let lastFrameTime = 0;
+        let animReqId = null;
+
+        // DOM
+        const canvas = document.getElementById('mapCanvas'); const ctx = canvas.getContext('2d');
+        const inputs = { 
+            p1Lat: document.getElementById('p1Lat'), p1Lon: document.getElementById('p1Lon'), 
+            p2Lat: document.getElementById('p2Lat'), p2Lon: document.getElementById('p2Lon'),
+            p3Lat: document.getElementById('p3Lat'), p3Lon: document.getElementById('p3Lon')
+        };
+        const p1Status = document.getElementById('p1Status'); const p2Status = document.getElementById('p2Status'); const p3Status = document.getElementById('p3Status');
+        
+        const btnPlayPause = document.getElementById('btnPlayPause');
+        const btnStop = document.getElementById('btnStop');
+        const timeSlider = document.getElementById('timeSlider');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const selSpeed = document.getElementById('selSpeed');
+
+        const fullscreenArea = document.getElementById('fullscreenArea'); const btnFullscreen = document.getElementById('btnFullscreen');
+
+        // --- FULLSCREEN LOGIC ---
+        btnFullscreen.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                fullscreenArea.requestFullscreen().catch(err => {
+                    logError(`Błąd przy próbie pełnego ekranu: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                btnFullscreen.innerHTML = '✖ <span data-i18n="exitFullscreenBtn" class="hidden md:inline">' + T("exitFullscreenBtn") + '</span>';
+            } else {
+                btnFullscreen.innerHTML = '🔲 <span data-i18n="fullscreenBtn" class="hidden md:inline">' + T("fullscreenBtn") + '</span>';
+            }
+            if (activeView === 'scan') { fitImageToCanvas(); }
+            if (activeView === 'online' && viewMap) { viewMap.invalidateSize(); fitViewMap(); }
+            updateUI();
+        });
+
+        // --- PRZEŁĄCZANIE WIDOKU ---
+        document.getElementById('btnViewScan').addEventListener('click', () => {
+            activeView = 'scan';
+            document.getElementById('btnViewScan').classList.add('view-toggle-active');
+            document.getElementById('btnViewOnline').classList.remove('view-toggle-active');
+            document.getElementById('canvasContainer').style.visibility = 'visible';
+            document.getElementById('viewMapContainer').style.visibility = 'hidden';
+            document.getElementById('calibrationToolbar').style.display = 'flex';
+            document.getElementById('btnCenterImage').style.display = 'flex';
+            updateUI();
+        });
+
+        document.getElementById('btnViewOnline').addEventListener('click', () => {
+            activeView = 'online';
+            document.getElementById('btnViewOnline').classList.add('view-toggle-active');
+            document.getElementById('btnViewScan').classList.remove('view-toggle-active');
+            document.getElementById('canvasContainer').style.visibility = 'hidden';
+            document.getElementById('viewMapContainer').style.visibility = 'visible';
+            document.getElementById('calibrationToolbar').style.display = 'none'; 
+            document.getElementById('btnCenterImage').style.display = 'none';
+            if(!viewMap) initViewMap();
+            setTimeout(() => { viewMap.invalidateSize(); }, 100);
+            updateUI();
+        });
+
+        function initViewMap() {
+            if (viewMap) return;
+            viewMap = L.map('viewMap').setView([52.069, 19.480], 6);
+            const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
+            const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
+            osm.addTo(viewMap); L.control.layers({ "Mapa Drogowa": osm, "Satelita": satellite }).addTo(viewMap);
+        }
+
+        function fitViewMap() {
+            if(!viewMap || tracks.length === 0) return;
+            let allLats = []; let allLons = [];
+            tracks.forEach(trk => { if(trk.visible) trk.points.forEach(pt => { allLats.push(pt.lat); allLons.push(pt.lon); }); });
+            if (allLats.length > 0) viewMap.fitBounds([[Math.min(...allLats), Math.min(...allLons)], [Math.max(...allLats), Math.max(...allLons)]], {padding: [30, 30]});
+        }
+        
+        window.fitCanvasToTracks = function() {
+            if (tracks.length === 0 || activeView !== 'scan') return;
+            const calib = getCalibObject();
+            if (!calib.p1 || !calib.p2 || isNaN(calib.p1.lat) || isNaN(calib.p2.lat)) {
+                setStatus(T("needPointsToZoom"));
+                return;
+            }
+
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let hasPoints = false;
+            tracks.forEach(trk => {
+                if(!trk.visible) return;
+                trk.points.forEach(pt => {
+                    const px = latLonToPixel(pt.lat, pt.lon, calib);
+                    if (!isNaN(px.x) && !isNaN(px.y)) {
+                        if (px.x < minX) minX = px.x; if (px.x > maxX) maxX = px.x;
+                        if (px.y < minY) minY = px.y; if (px.y > maxY) maxY = px.y;
+                        hasPoints = true;
+                    }
+                });
+            });
+
+            if (!hasPoints) return;
+
+            const padding = 40; 
+            const trackW = maxX - minX;
+            const trackH = maxY - minY;
+            
+            const cw = canvas.width;
+            const ch = canvas.height;
+            
+            const scaleX = (cw - padding * 2) / (trackW || 1);
+            const scaleY = (ch - padding * 2) / (trackH || 1);
+            
+            transform.scale = Math.min(scaleX, scaleY);
+            if (transform.scale > 20) transform.scale = 20; 
+            
+            transform.x = (cw / 2) - ((minX + maxX) / 2) * transform.scale;
+            transform.y = (ch / 2) - ((minY + maxY) / 2) * transform.scale;
+            
+            updateUI();
+        };
+        
+        document.getElementById('btnZoomTracks').addEventListener('click', () => {
+            if (activeView === 'online') {
+                fitViewMap();
+                setStatus(T("centeredTracks"));
+            } else {
+                fitCanvasToTracks();
+                setStatus(T("centeredTracks"));
+            }
+        });
+
+        // --- MATEMATYKA (Skala Kalibracji z 3 punktów) ---
+        function getCalibObject() {
+            return {
+                p1: p1Px ? { x: p1Px.x, y: p1Px.y, lat: parseFloat(inputs.p1Lat.value), lon: parseFloat(inputs.p1Lon.value) } : null,
+                p2: p2Px ? { x: p2Px.x, y: p2Px.y, lat: parseFloat(inputs.p2Lat.value), lon: parseFloat(inputs.p2Lon.value) } : null,
+                p3: p3Px ? { x: p3Px.x, y: p3Px.y, lat: parseFloat(inputs.p3Lat.value), lon: parseFloat(inputs.p3Lon.value) } : null
+            };
+        }
+
+        function getAffineTransform(calib) {
+            const { p1, p2, p3 } = calib;
+            const det = (p1.lon - p2.lon) * (p1.lat - p3.lat) - (p1.lon - p3.lon) * (p1.lat - p2.lat);
+            if (Math.abs(det) < 1e-10) return null;
+            const A = ((p1.x - p2.x) * (p1.lat - p3.lat) - (p1.x - p3.x) * (p1.lat - p2.lat)) / det;
+            const B = ((p1.lon - p2.lon) * (p1.x - p3.x) - (p1.lon - p3.lon) * (p1.x - p2.x)) / det;
+            const C = p1.x - A * p1.lon - B * p1.lat;
+            const D = ((p1.y - p2.y) * (p1.lat - p3.lat) - (p1.y - p3.y) * (p1.lat - p2.lat)) / det;
+            const E = ((p1.lon - p2.lon) * (p1.y - p3.y) - (p1.lon - p3.lon) * (p1.y - p2.y)) / det;
+            const F = p1.y - D * p1.lon - E * p1.lat;
+            return { A, B, C, D, E, F };
+        }
+
+        function latLonToPixel(lat, lon, calib) {
+            const p1V = calib.p1 && !isNaN(calib.p1.lat) && !isNaN(calib.p1.lon);
+            const p2V = calib.p2 && !isNaN(calib.p2.lat) && !isNaN(calib.p2.lon);
+            const p3V = calib.p3 && !isNaN(calib.p3.lat) && !isNaN(calib.p3.lon);
+            if (p1V && p2V && p3V) {
+                const t = getAffineTransform(calib); 
+                if (t) return { x: t.A * lon + t.B * lat + t.C, y: t.D * lon + t.E * lat + t.F }; 
+            }
+            if (p1V && p2V) {
+                if (calib.p1.lon === calib.p2.lon || calib.p1.lat === calib.p2.lat) return { x: NaN, y: NaN };
+                return { 
+                    x: calib.p1.x + (lon - calib.p1.lon) * ((calib.p2.x - calib.p1.x) / (calib.p2.lon - calib.p1.lon)), 
+                    y: calib.p1.y + (lat - calib.p1.lat) * ((calib.p2.y - calib.p1.y) / (calib.p2.lat - calib.p1.lat)) 
+                };
+            }
+            return { x: NaN, y: NaN };
+        }
+
+        function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; const dLat = (lat2-lat1)*(Math.PI/180); const dLon = (lon2-lon1)*(Math.PI/180); 
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*(Math.PI/180)) * Math.cos(lat2*(Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        // --- GPX MULTITRACK & ANIMACJA ---
+        function formatTime(ms) {
+            if(ms === Infinity || ms === -Infinity || isNaN(ms)) return "00:00:00";
+            const totalSeconds = Math.floor(Math.abs(ms) / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        function calculateTrackStats(trackPoints) {
+            if (!trackPoints || trackPoints.length < 2) return { distance: 0, timeMs: 0, speed: 0 };
+            
+            let distMeters = 0;
+            for(let i=1; i<trackPoints.length; i++) {
+                distMeters += getDistanceFromLatLonInMeters(trackPoints[i-1].lat, trackPoints[i-1].lon, trackPoints[i].lat, trackPoints[i].lon);
+            }
+            
+            const distKm = distMeters / 1000;
+            const timeMs = trackPoints[trackPoints.length-1].time - trackPoints[0].time;
+            const timeHours = timeMs / (1000 * 60 * 60);
+            const speed = timeHours > 0 ? (distKm / timeHours) : 0;
+            
+            return { distance: distKm, timeMs: timeMs, speed: speed };
+        }
+
+        function recalcTimeBounds() {
+            globalMinTime = Infinity; globalMaxTime = -Infinity;
+            tracks.forEach(trk => {
+                if(trk.points.length > 0) {
+                    const tStart = trk.points[0].time; const tEnd = trk.points[trk.points.length-1].time;
+                    if(tStart < globalMinTime) globalMinTime = tStart;
+                    if(tEnd > globalMaxTime) globalMaxTime = tEnd;
+                }
+            });
+            
+            if (globalMinTime !== Infinity) {
+                currentAnimTime = globalMinTime;
+                timeSlider.min = globalMinTime;
+                timeSlider.max = globalMaxTime;
+                timeSlider.value = globalMinTime;
+                timeSlider.disabled = false;
+                btnPlayPause.disabled = false;
+                btnStop.disabled = false;
+            } else {
+                timeSlider.disabled = true; btnPlayPause.disabled = true; btnStop.disabled = true;
+            }
+        }
+
+        window.toggleTrack = function(index) { 
+            if(tracks[index]) { 
+                tracks[index].visible = !tracks[index].visible; 
+                if(!tracks[index].visible && tracks[index].leafletLine) {
+                    if(viewMap) { viewMap.removeLayer(tracks[index].leafletLine); viewMap.removeLayer(tracks[index].leafletMarker); }
+                }
+                updateGpxListUI(); updateUI(); 
+            } 
+        };
+        
+        window.removeTrack = function(index) { 
+            if(tracks[index]) { 
+                if(tracks[index].leafletLine && viewMap) { viewMap.removeLayer(tracks[index].leafletLine); viewMap.removeLayer(tracks[index].leafletMarker); }
+                tracks.splice(index, 1); 
+                recalcTimeBounds(); updateGpxListUI(); updateUI(); 
+            } 
+        };
+        
+        window.setWinner = function(index) {
+            if (tracks[index]) {
+                const wasWinner = tracks[index].isWinner;
+                tracks.forEach(t => t.isWinner = false);
+                tracks[index].isWinner = !wasWinner;
+                
+                tracks.forEach(t => {
+                    if (t.leafletMarker) {
+                        t.leafletMarker.setTooltipContent(t.name + (t.isWinner ? " 👑" : ""));
+                    }
+                });
+                updateGpxListUI();
+                updateUI();
+            }
+        };
+
+        window.updateTrackName = function(idx, newName) {
+            if (tracks[idx]) {
+                tracks[idx].name = newName;
+                if (tracks[idx].leafletMarker) {
+                    tracks[idx].leafletMarker.setTooltipContent(newName + (tracks[idx].isWinner ? " 👑" : ""));
+                }
+                updateUI();
+            }
+        };
+
+        function updateGpxListUI() {
+            const container = document.getElementById('gpxListContainer');
+            container.innerHTML = '';
+            
+            let winnerTimeMs = null;
+            const winnerTrack = tracks.find(t => t.isWinner);
+            if (winnerTrack && winnerTrack.stats) {
+                winnerTimeMs = winnerTrack.stats.timeMs;
+            }
+
+            tracks.forEach((trk, idx) => {
+                
+                const stats = trk.stats || calculateTrackStats(trk.points);
+                const dStr = stats.distance.toFixed(2) + " km";
+                let tStr = formatTime(stats.timeMs);
+                let gapHtml = "";
+                
+                if (winnerTimeMs !== null && !trk.isWinner) {
+                    const diff = stats.timeMs - winnerTimeMs;
+                    const sign = diff > 0 ? "+" : (diff < 0 ? "-" : "");
+                    const colorClass = diff > 0 ? "text-rose-500" : (diff < 0 ? "text-emerald-500" : "text-slate-500");
+                    if (diff !== 0) {
+                        gapHtml = ` <span class="font-bold ${colorClass}">(${sign}${formatTime(Math.abs(diff))})</span>`;
+                    }
+                }
+
+                const sStr = stats.speed.toFixed(1) + " km/h";
+                
+                container.innerHTML += `
+                    <div class="flex flex-col bg-white p-1.5 rounded-md border ${trk.isWinner ? 'border-yellow-400 shadow-sm bg-yellow-50/30' : 'border-slate-200 shadow-sm'} text-[10px] transition-all">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <div class="flex items-center gap-1.5 flex-grow min-w-0 pr-1.5">
+                                <div class="w-2.5 h-2.5 rounded-full shadow-inner flex-shrink-0" style="background-color: ${trk.color}; opacity: ${trk.visible ? '1' : '0.3'}"></div>
+                                <input type="text" value="${trk.name}" onchange="updateTrackName(${idx}, this.value)" class="font-semibold text-[10px] border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none bg-transparent w-full truncate ${trk.visible ? (trk.isWinner ? 'text-yellow-700' : 'text-slate-700') : 'text-slate-400 line-through'}" title="${trk.name}">
+                            </div>
+                            <div class="flex items-center gap-1.5 ml-1 flex-shrink-0">
+                                <button onclick="setWinner(${idx})" class="transition text-[12px] ${trk.isWinner ? 'text-yellow-500 opacity-100 scale-110' : 'text-slate-300 hover:text-yellow-400 opacity-50 hover:opacity-100'}" title="${T('setWinner')}">👑</button>
+                                <button onclick="toggleTrack(${idx})" class="text-slate-400 hover:text-blue-600 transition text-[11px]">${trk.visible ? '👁️' : '👁️‍🗨️'}</button>
+                                <button onclick="removeTrack(${idx})" class="text-slate-300 hover:text-rose-500 transition text-[11px] font-bold">✕</button>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center text-[9px] ${trk.isWinner ? 'text-yellow-700 bg-yellow-100/50 border-yellow-200' : 'text-slate-500 bg-slate-50 border-slate-100'} p-1 rounded border">
+                            <span title="${T('statDist')}">📏 ${dStr}</span>
+                            <span title="${T('statTime')}">⏱️ ${tStr}${gapHtml}</span>
+                            <span title="${T('statSpeed')}">⚡ ${sStr}</span>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // Kontrolki Odtwarzacza
+        btnPlayPause.addEventListener('click', () => {
+            if (globalMinTime === Infinity) return;
+            if (isPlaying) {
+                isPlaying = false; btnPlayPause.innerText = '▶';
+            } else {
+                if(currentAnimTime >= globalMaxTime) currentAnimTime = globalMinTime;
+                isPlaying = true; btnPlayPause.innerText = '⏸';
+                lastFrameTime = performance.now();
+                animReqId = requestAnimationFrame(animLoop);
+            }
+        });
+
+        btnStop.addEventListener('click', () => {
+            isPlaying = false; btnPlayPause.innerText = '▶';
+            currentAnimTime = globalMinTime;
+            timeSlider.value = currentAnimTime;
+            updateUI();
+        });
+
+        selSpeed.addEventListener('change', (e) => { playbackSpeed = parseFloat(e.target.value); });
+        
+        timeSlider.addEventListener('input', (e) => {
+            currentAnimTime = parseFloat(e.target.value);
+            updateUI();
+        });
+
+        function animLoop(timestamp) {
+            if (!isPlaying) return;
+            
+            const dt = timestamp - lastFrameTime; 
+            lastFrameTime = timestamp;
+            
+            currentAnimTime += dt * playbackSpeed;
+            
+            if (currentAnimTime >= globalMaxTime) {
+                currentAnimTime = globalMaxTime;
+                isPlaying = false;
+                btnPlayPause.innerText = '▶';
+            }
+            
+            timeSlider.value = currentAnimTime;
+            updateUI();
+            
+            if(isPlaying) animReqId = requestAnimationFrame(animLoop);
+        }
+
+        // Interpolacja śladu
+        function getTrackStateAtTime(track, t) {
+            if (track.points.length === 0) return null;
+            if (t <= track.points[0].time) return { pt: track.points[0], index: 0 };
+            if (t >= track.points[track.points.length-1].time) return { pt: track.points[track.points.length-1], index: track.points.length-1 };
+
+            let i = 0;
+            for (; i < track.points.length - 1; i++) {
+                if (t >= track.points[i].time && t <= track.points[i+1].time) break;
+            }
+            
+            const p1 = track.points[i];
+            const p2 = track.points[i+1];
+            const timeDiff = p2.time - p1.time;
+            const ratio = timeDiff === 0 ? 0 : (t - p1.time) / timeDiff;
+            
+            return {
+                pt: {
+                    lat: p1.lat + (p2.lat - p1.lat) * ratio,
+                    lon: p1.lon + (p2.lon - p1.lon) * ratio
+                },
+                index: i
+            };
+        }
+
+        // Moduł do zmiany stanu przycisków punktów
+        function updateBtnState(btnId, isSet, isScan) {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            if (isSet) {
+                btn.className = "flex-1 text-[11px] font-medium bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 px-1 py-1.5 rounded transition shadow-sm";
+                btn.innerHTML = (isScan ? T("scanBtnActive") : T("mapBtnActive"));
+            } else {
+                if (isScan) {
+                    btn.className = "flex-1 text-[11px] font-medium bg-slate-100 hover:bg-blue-50 border border-slate-200 text-slate-600 px-1 py-1.5 rounded transition";
+                    btn.innerHTML = T("scanBtn");
+                } else {
+                    btn.className = "flex-1 text-[11px] font-medium bg-blue-600 hover:bg-blue-700 text-white px-1 py-1.5 rounded transition shadow-sm";
+                    btn.innerHTML = T("mapBtn");
+                }
+            }
+        }
+
+        // --- GŁÓWNA FUNKCJA RYSOWANIA (CANVAS + LEAFLET) ---
+        function updateUI() {
+            // UI Teksty
+            const p1ValidMap = inputs.p1Lat.value !== "" && !isNaN(inputs.p1Lat.value);
+            const p2ValidMap = inputs.p2Lat.value !== "" && !isNaN(inputs.p2Lat.value);
+            const p3ValidMap = inputs.p3Lat.value !== "" && !isNaN(inputs.p3Lat.value);
+
+            const p1ValidImg = p1Px !== null;
+            const p2ValidImg = p2Px !== null;
+            const p3ValidImg = p3Px !== null;
+
+            const p1Complete = p1ValidMap && p1ValidImg;
+            const p2Complete = p2ValidMap && p2ValidImg;
+            const p3Complete = p3ValidMap && p3ValidImg;
+
+            // Zaznaczanie głównych przycisków
+            updateBtnState('btnSetP1ImgTop', p1ValidImg, true);
+            updateBtnState('btnSetP2ImgTop', p2ValidImg, true);
+            updateBtnState('btnSetP3ImgTop', p3ValidImg, true);
+
+            updateBtnState('btnSetP1MapTop', p1ValidMap, false);
+            updateBtnState('btnSetP2MapTop', p2ValidMap, false);
+            updateBtnState('btnSetP3MapTop', p3ValidMap, false);
+
+            // Zaznaczanie boxów
+            document.getElementById('p1InputGroup').className = p1Complete ? "bg-emerald-100 p-3.5 rounded-xl border border-emerald-400" : "bg-blue-50 p-3.5 rounded-xl border border-blue-100";
+            document.getElementById('p2InputGroup').className = p2Complete ? "bg-emerald-100 p-3.5 rounded-xl border border-emerald-400" : "bg-purple-50 p-3.5 rounded-xl border border-purple-100";
+            document.getElementById('p3InputGroup').className = p3Complete ? "bg-emerald-100 p-3.5 rounded-xl border border-emerald-400" : "bg-orange-50 p-3.5 rounded-xl border border-orange-100";
+
+            document.getElementById('p1Toolbar').className = p1Complete ? "flex-1 bg-emerald-100 border border-emerald-400 shadow-md p-2 rounded-lg transition-all duration-300" : "flex-1 bg-white border border-slate-200 p-2 rounded-lg transition-all duration-300";
+            document.getElementById('p2Toolbar').className = p2Complete ? "flex-1 bg-emerald-100 border border-emerald-400 shadow-md p-2 rounded-lg transition-all duration-300" : "flex-1 bg-white border border-slate-200 p-2 rounded-lg transition-all duration-300";
+            document.getElementById('p3Toolbar').className = p3Complete ? "flex-1 bg-emerald-100 border border-emerald-400 shadow-md p-2 rounded-lg transition-all duration-300" : "flex-1 bg-white border border-slate-200 p-2 rounded-lg transition-all duration-300";
+
+            document.getElementById('p1Check').className = p1Complete ? "text-emerald-600 font-bold text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded shadow-sm" : "hidden";
+            document.getElementById('p2Check').className = p2Complete ? "text-emerald-600 font-bold text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded shadow-sm" : "hidden";
+            document.getElementById('p3Check').className = p3Complete ? "text-emerald-600 font-bold text-[10px] bg-emerald-200/80 px-2 py-0.5 rounded shadow-sm" : "hidden";
+
+            document.getElementById('p1ToolbarCheck').className = p1Complete ? "text-emerald-600 font-extrabold text-sm" : "hidden";
+            document.getElementById('p2ToolbarCheck').className = p2Complete ? "text-emerald-600 font-extrabold text-sm" : "hidden";
+            document.getElementById('p3ToolbarCheck').className = p3Complete ? "text-emerald-600 font-extrabold text-sm" : "hidden";
+            
+            timeDisplay.innerText = formatTime(currentAnimTime); 
+
+            // CANVAS RENDER
+            if (activeView === 'scan') {
+                if (isNaN(transform.scale) || transform.scale <= 0) transform.scale = 1;
+                if (isNaN(transform.x)) transform.x = 0; if (isNaN(transform.y)) transform.y = 0;
+
+                ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.translate(transform.x, transform.y); ctx.scale(transform.scale, transform.scale);
+
+                // Tło
+                if (mapImage) { ctx.drawImage(mapImage, 0, 0); } 
+                else { ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 24px Arial'; ctx.textAlign = 'center'; ctx.fillText('GEOGPX RACE', canvas.width/2, canvas.height/2); ctx.textAlign = 'left'; }
+
+                // Kalibracja
+                if (p1Px) drawCircle(p1Px.x, p1Px.y, 8 / transform.scale, '#2563eb', T("point1"));
+                if (p2Px) drawCircle(p2Px.x, p2Px.y, 8 / transform.scale, '#9333ea', T("point2"));
+                if (p3Px) drawCircle(p3Px.x, p3Px.y, 8 / transform.scale, '#ea580c', T("point3"));
+
+                const calib = getCalibObject();
+                
+                if (p1Complete && p2Complete && p3Complete) {
+                    tracks.forEach(trk => {
+                        if(!trk.visible || trk.points.length === 0) return;
+                        
+                        const state = getTrackStateAtTime(trk, currentAnimTime);
+                        if(!state) return;
+
+                        ctx.beginPath(); ctx.strokeStyle = trk.color; ctx.lineWidth = 4 / transform.scale; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                        let isFirst = true;
+                        
+                        for(let i=0; i<=state.index; i++) {
+                            const px = latLonToPixel(trk.points[i].lat, trk.points[i].lon, calib);
+                            if (!isNaN(px.x) && !isNaN(px.y)) {
+                                if (isFirst) { ctx.moveTo(px.x, px.y); isFirst = false; } else { ctx.lineTo(px.x, px.y); }
+                            }
+                        }
+                        
+                        // Ostatni punkt z nazwa tracku (competitor name)
+                        const curPx = latLonToPixel(state.pt.lat, state.pt.lon, calib);
+                        if (!isNaN(curPx.x) && !isNaN(curPx.y)) {
+                            if (isFirst) ctx.moveTo(curPx.x, curPx.y); else ctx.lineTo(curPx.x, curPx.y);
+                            ctx.stroke();
+                            drawCircle(curPx.x, curPx.y, 6 / transform.scale, trk.color, trk.name + (trk.isWinner ? " 👑" : ""), '#ffffff');
+                        } else {
+                            ctx.stroke();
+                        }
+                    });
+                    setStatus(`${T("animStart")} ${T("calibSys")} 3-PKT`);
+                } else if(tracks.length > 0) {
+                    setStatus(T("needPoints"));
+                }
+            } 
+            
+            // LEAFLET RENDER
+            if (activeView === 'online' && viewMap) {
+                tracks.forEach(trk => {
+                    if(!trk.visible || trk.points.length === 0) {
+                        if(trk.leafletLine) { viewMap.removeLayer(trk.leafletLine); viewMap.removeLayer(trk.leafletMarker); }
+                        return;
+                    }
+                    
+                    const state = getTrackStateAtTime(trk, currentAnimTime);
+                    if(!state) return;
+
+                    const pastPoints = trk.points.slice(0, state.index + 1).map(p => [p.lat, p.lon]);
+                    pastPoints.push([state.pt.lat, state.pt.lon]);
+
+                    // Tworzenie warstw
+                    if(!trk.leafletLine) {
+                        trk.leafletLine = L.polyline([], {color: trk.color, weight: 4, opacity: 0.8}).addTo(viewMap);
+                        trk.leafletMarker = L.circleMarker([0,0], {radius: 6, fillColor: trk.color, color: '#fff', weight: 2, fillOpacity: 1}).addTo(viewMap);
+                        trk.leafletMarker.bindTooltip(trk.name + (trk.isWinner ? " 👑" : ""), {permanent: true, direction: 'right', className: 'font-bold text-xs bg-white/90 border-0 shadow-sm'});
+                    }
+
+                    // Aktualizacja
+                    if(!viewMap.hasLayer(trk.leafletLine)) { trk.leafletLine.addTo(viewMap); trk.leafletMarker.addTo(viewMap); }
+                    
+                    trk.leafletLine.setLatLngs(pastPoints);
+                    trk.leafletMarker.setLatLng([state.pt.lat, state.pt.lon]);
+                    trk.leafletMarker.setTooltipContent(trk.name + (trk.isWinner ? " 👑" : ""));
+                });
+                setStatus(`${T("animStart")} ${T("calibSys")} Mapa Online`);
+            }
+        }
+
+        function drawCircle(x, y, radius, fillColor, label = '', strokeCol = '#ffffff') {
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, 2 * Math.PI); ctx.fillStyle = fillColor; ctx.fill();
+            ctx.strokeStyle = strokeCol; ctx.lineWidth = 2 / transform.scale; ctx.stroke();
+            if (label) {
+                ctx.fillStyle = '#0f172a'; ctx.font = `bold ${12 / transform.scale}px Arial`;
+                ctx.shadowColor="white"; ctx.shadowBlur=4; ctx.shadowLineWidth=4;
+                ctx.fillText(label, x + (10 / transform.scale), y - (10 / transform.scale)); ctx.shadowBlur=0;
+            }
+        }
+
+        // --- OBSŁUGA INTERAKCJI Z CANVAS (Mysz + Dotyk) ---
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect(); const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; clientY = e.touches[0].clientY; } 
+            else if (e.changedTouches && e.changedTouches.length > 0) { clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY; } 
+            else { clientX = e.clientX; clientY = e.clientY; }
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+        function getImgPos(e) { const pos = getEventPos(e); return { x: (pos.x - transform.x) / transform.scale, y: (pos.y - transform.y) / transform.scale }; }
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault(); const mousePos = getEventPos(e);
+            const imgX = (mousePos.x - transform.x) / transform.scale; const imgY = (mousePos.y - transform.y) / transform.scale;
+            let newScale = transform.scale * (1 + (e.deltaY < 0 ? 1 : -1) * 0.1); newScale = Math.max(0.05, Math.min(newScale, 20));
+            transform.x = mousePos.x - imgX * newScale; transform.y = mousePos.y - imgY * newScale; transform.scale = newScale; updateUI();
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pt = getImgPos(e);
+            if (calibMode === 0) {
+                const hitRadius = 15 / transform.scale;
+                if (p1Px && Math.hypot(pt.x - p1Px.x, pt.y - p1Px.y) < hitRadius) { draggedPoint = 1; canvas.style.cursor = 'grabbing'; return; }
+                if (p2Px && Math.hypot(pt.x - p2Px.x, pt.y - p2Px.y) < hitRadius) { draggedPoint = 2; canvas.style.cursor = 'grabbing'; return; }
+                if (p3Px && Math.hypot(pt.x - p3Px.x, pt.y - p3Px.y) < hitRadius) { draggedPoint = 3; canvas.style.cursor = 'grabbing'; return; }
+
+                isDraggingMap = true; dragStartMap = { x: getEventPos(e).x - transform.x, y: getEventPos(e).y - transform.y };
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (draggedPoint) {
+                const pt = getImgPos(e);
+                if (draggedPoint === 1) { p1Px = pt; p1Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                else if (draggedPoint === 2) { p2Px = pt; p2Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                else if (draggedPoint === 3) { p3Px = pt; p3Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                updateUI();
+                return;
+            }
+            if (isDraggingMap && calibMode === 0) { 
+                transform.x = getEventPos(e).x - dragStartMap.x; transform.y = getEventPos(e).y - dragStartMap.y; updateUI(); 
+                return;
+            }
+            if (calibMode === 0 && !isDraggingMap) {
+                const pt = getImgPos(e);
+                const hitRadius = 15 / transform.scale;
+                if ((p1Px && Math.hypot(pt.x - p1Px.x, pt.y - p1Px.y) < hitRadius) ||
+                    (p2Px && Math.hypot(pt.x - p2Px.x, pt.y - p2Px.y) < hitRadius) ||
+                    (p3Px && Math.hypot(pt.x - p3Px.x, pt.y - p3Px.y) < hitRadius)) {
+                    canvas.style.cursor = 'pointer';
+                } else {
+                    canvas.style.cursor = 'grab';
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => { 
+            if (draggedPoint) { draggedPoint = null; canvas.style.cursor = 'grab'; setStatus(T("pointRecorded")); }
+            isDraggingMap = false; 
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (calibMode === 0) return;
+            const imgX = (getEventPos(e).x - transform.x) / transform.scale; const imgY = (getEventPos(e).y - transform.y) / transform.scale;
+            if (calibMode === 1) { p1Px = { x: imgX, y: imgY }; p1Status.innerText = `Skan: (${Math.round(imgX)}px, ${Math.round(imgY)}px)`; } 
+            else if (calibMode === 2) { p2Px = { x: imgX, y: imgY }; p2Status.innerText = `Skan: (${Math.round(imgX)}px, ${Math.round(imgY)}px)`; } 
+            else if (calibMode === 3) { p3Px = { x: imgX, y: imgY }; p3Status.innerText = `Skan: (${Math.round(imgX)}px, ${Math.round(imgY)}px)`; } 
+            
+            calibMode = 0; canvas.classList.remove('calibrating');
+            ['btnSetP1ImgTop', 'btnSetP2ImgTop', 'btnSetP3ImgTop'].forEach(id => document.getElementById(id).classList.remove('ring-2', 'ring-amber-400', 'bg-amber-100'));
+            setStatus(T("pointRecorded")); updateUI();
+        });
+
+        // DOTYK
+        function getPinchDistance(e) { return Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)); }
+        function getPinchCenter(e) { return getEventPos({ clientX: (e.touches[0].clientX + e.touches[1].clientX) / 2, clientY: (e.touches[0].clientY + e.touches[1].clientY) / 2 }); }
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && calibMode === 0) {
+                const pt = getImgPos(e);
+                const hitRadius = 25 / transform.scale;
+                if (p1Px && Math.hypot(pt.x - p1Px.x, pt.y - p1Px.y) < hitRadius) { draggedPoint = 1; return; }
+                if (p2Px && Math.hypot(pt.x - p2Px.x, pt.y - p2Px.y) < hitRadius) { draggedPoint = 2; return; }
+                if (p3Px && Math.hypot(pt.x - p3Px.x, pt.y - p3Px.y) < hitRadius) { draggedPoint = 3; return; }
+
+                isDraggingMap = true; dragStartMap = { x: getEventPos(e).x - transform.x, y: getEventPos(e).y - transform.y };
+            } else if (e.touches.length === 2) {
+                isDraggingMap = false; draggedPoint = null; initialPinchDistance = getPinchDistance(e); lastPinchCenter = getPinchCenter(e);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                if (draggedPoint) {
+                    const pt = getImgPos(e);
+                    if (draggedPoint === 1) { p1Px = pt; p1Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                    else if (draggedPoint === 2) { p2Px = pt; p2Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                    else if (draggedPoint === 3) { p3Px = pt; p3Status.innerText = `Skan: (${Math.round(pt.x)}px, ${Math.round(pt.y)}px)`; }
+                    updateUI();
+                    return;
+                }
+                if (isDraggingMap && calibMode === 0) {
+                    transform.x = getEventPos(e).x - dragStartMap.x; transform.y = getEventPos(e).y - dragStartMap.y; updateUI(); 
+                }
+            } else if (e.touches.length === 2) {
+                const currentCenter = getPinchCenter(e);
+                if (initialPinchDistance) {
+                    let newScale = transform.scale * (getPinchDistance(e) / initialPinchDistance); newScale = Math.max(0.05, Math.min(newScale, 20));
+                    const imgX = (lastPinchCenter.x - transform.x) / transform.scale; const imgY = (lastPinchCenter.y - transform.y) / transform.scale;
+                    transform.scale = isNaN(newScale) ? transform.scale : newScale;
+                    transform.x = currentCenter.x - imgX * transform.scale; transform.y = currentCenter.y - imgY * transform.scale;
+                    initialPinchDistance = getPinchDistance(e); lastPinchCenter = currentCenter; updateUI();
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => { 
+            e.preventDefault(); 
+            if (draggedPoint) { draggedPoint = null; setStatus(T("pointRecorded")); }
+            isDraggingMap = false; initialPinchDistance = null; 
+        });
+
+        // --- WCZYTYWANIE MAPY I GPX ---
+        function fitImageToCanvas() {
+            if (!mapImage) return;
+            const container = document.getElementById('canvasContainer'); const rect = container.getBoundingClientRect();
+            const cw = rect.width || window.innerWidth || 800; const ch = rect.height || window.innerHeight * 0.65 || 500;
+            if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+            const scaleX = cw / (mapImage.width || 1); const scaleY = ch / (mapImage.height || 1);
+            transform.scale = Math.max(0.01, Math.min(scaleX, scaleY, 1));
+            transform.x = (cw - (mapImage.width * transform.scale)) / 2; transform.y = (ch - (mapImage.height * transform.scale)) / 2;
+        }
+
+        document.getElementById('btnCenterImage').addEventListener('click', () => { if (!mapImage) return; fitImageToCanvas(); updateUI(); setStatus(T("centered")); });
+        window.addEventListener('resize', () => { if(mapImage) { const rect = document.getElementById('canvasContainer').getBoundingClientRect(); if(rect.width > 0 && rect.height > 0) { canvas.width = rect.width; canvas.height = rect.height; updateUI(); } } });
+
+        document.getElementById('mapImageInput').addEventListener('change', (e) => {
+            try {
+                const file = e.target.files[0]; if (!file) return; 
+                mapFileName = file.name; document.getElementById('mapFileNameLabel').innerText = `${mapFileName}`;
+                setStatus(`Ładowanie obrazu: ${file.name}...`);
+                if (file.type === 'application/pdf') {
+                    const reader = new FileReader();
+                    reader.onload = async function(event) {
+                        try {
+                            const typedarray = new Uint8Array(event.target.result); const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                            const page = await pdf.getPage(1); const viewport = page.getViewport({scale: 2.0}); 
+                            const offscreenCanvas = document.createElement('canvas'); const offscreenCtx = offscreenCanvas.getContext('2d');
+                            offscreenCanvas.height = viewport.height; offscreenCanvas.width = viewport.width;
+                            await page.render({canvasContext: offscreenCtx, viewport: viewport}).promise;
+                            const img = new Image();
+                            img.onload = function() { mapImage = img; p1Px = null; p2Px = null; p3Px = null; p1Status.innerText = T("scanNone"); p2Status.innerText = T("scanNone"); p3Status.innerText = T("scanNone"); calibMode = 0; fitImageToCanvas(); document.getElementById('btnViewScan').click(); setStatus(`${T("loadedMap")} ${file.name}`); }
+                            img.src = offscreenCanvas.toDataURL('image/jpeg', 0.9);
+                        } catch(err) { logError(T("errLoadPdf") + " " + err.message); }
+                    }; reader.readAsArrayBuffer(file);
+                } else {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const img = new Image();
+                        img.onload = function() { mapImage = img; p1Px = null; p2Px = null; p3Px = null; p1Status.innerText = T("scanNone"); p2Status.innerText = T("scanNone"); p3Status.innerText = T("scanNone"); calibMode = 0; fitImageToCanvas(); document.getElementById('btnViewScan').click(); setStatus(`${T("loadedMap")} ${file.name}`); }
+                        img.onerror = function() { logError(T("errNotImage")); }
+                        img.src = event.target.result;
+                    }; reader.readAsDataURL(file);
+                }
+            } catch(err) { logError(err.message); }
+        });
+
+        document.getElementById('gpxInput').addEventListener('change', async (e) => {
+            try {
+                const files = Array.from(e.target.files);
+                if (!files.length) return; 
+
+                for (const file of files) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        try {
+                            const xmlDoc = new DOMParser().parseFromString(event.target.result, "text/xml");
+                            const allElements = xmlDoc.getElementsByTagName("*"); let track = [];
+                            
+                            let fakeTime = new Date('2026-01-01T08:00:00Z').getTime();
+                            let lastLat = null; let lastLon = null;
+
+                            for (let i = 0; i < allElements.length; i++) {
+                                const tag = (allElements[i].localName || allElements[i].tagName || "").toLowerCase();
+                                if (tag === "trkpt" || tag === "rtept" || tag === "wpt") {
+                                    const lat = parseFloat(allElements[i].getAttribute("lat")); const lon = parseFloat(allElements[i].getAttribute("lon"));
+                                    if (!isNaN(lat) && !isNaN(lon)) {
+                                        let ptTime = null;
+                                        for(let j=0; j<allElements[i].childNodes.length; j++) {
+                                            const child = allElements[i].childNodes[j];
+                                            if((child.localName || child.tagName || "").toLowerCase() === 'time') {
+                                                ptTime = new Date(child.textContent).getTime();
+                                                break;
+                                            }
+                                        }
+                                        if(!ptTime) {
+                                            if(lastLat !== null) {
+                                                const dist = getDistanceFromLatLonInMeters(lastLat, lastLon, lat, lon);
+                                                fakeTime += (dist / 2) * 1000;
+                                            }
+                                            ptTime = fakeTime;
+                                        }
+                                        track.push({ lat, lon, time: ptTime });
+                                        lastLat = lat; lastLon = lon;
+                                    }
+                                }
+                            }
+                            if (track.length > 0) {
+                                // NORMALIZACJA CZASU: Przesuwamy czasy, by pierwszy punkt miał zawsze T = 0.
+                                const firstTime = track[0].time;
+                                track.forEach(pt => pt.time -= firstTime);
+
+                                const stats = calculateTrackStats(track);
+
+                                const color = trackColors[tracks.length % trackColors.length];
+                                tracks.push({ name: file.name, track: [], color: color, visible: true, points: track, stats: stats, leafletLine: null, leafletMarker: null });
+                                recalcTimeBounds(); updateGpxListUI(); updateUI(); setStatus(`${T("loadedGpx")} ${track.length}`);
+                            } else { logError(T("loadedGpxNone")); }
+                        } catch (parseErr) { logError(T("errGpx")); }
+                    }; 
+                    reader.readAsText(file);
+                }
+                e.target.value = ''; 
+                
+                // Automatycznie przybliż mapę online, jeśli jesteśmy w jej widoku
+                if(activeView === 'online') {
+                    setTimeout(() => { fitViewMap(); }, 300);
+                }
+            } catch(err) { logError("Błąd: " + err.message); }
+        });
+
+        // Wczytywanie Projektu
+        function handleProjectLoad(e) {
+            const file = e.target.files[0]; if (!file) return; 
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const state = JSON.parse(event.target.result);
+                    if (state.inputs) {
+                        inputs.p1Lat.value = state.inputs.p1Lat || ""; inputs.p1Lon.value = state.inputs.p1Lon || "";
+                        inputs.p2Lat.value = state.inputs.p2Lat || ""; inputs.p2Lon.value = state.inputs.p2Lon || "";
+                        inputs.p3Lat.value = state.inputs.p3Lat || ""; inputs.p3Lon.value = state.inputs.p3Lon || "";
+                    }
+                    if (state.projectName) document.getElementById('projectName').value = state.projectName;
+                    
+                    mapFileName = state.mapFileName || ""; document.getElementById('mapFileNameLabel').innerText = mapFileName ? `${mapFileName}` : "";
+                    
+                    if(state.tracks) tracks = state.tracks;
+                    else if(state.gpxData) tracks = state.gpxData.map(t => ({...t, points: t.track, leafletLine: null, leafletMarker: null}));
+                    
+                    // Upewnijmy się, że czas ze starego projektu też zostanie znormalizowany oraz policzmy statystyki
+                    tracks.forEach(trk => {
+                        if (trk.points && trk.points.length > 0) {
+                            const firstTime = trk.points[0].time;
+                            if (firstTime !== 0) { trk.points.forEach(pt => pt.time -= firstTime); }
+                        }
+                        if (!trk.stats) { trk.stats = calculateTrackStats(trk.points); }
+                    });
+
+                    recalcTimeBounds(); updateGpxListUI();
+                    
+                    p1Px = state.p1Px || null; p2Px = state.p2Px || null; p3Px = state.p3Px || null; 
+                    if (state.transform) transform = state.transform;
+                    if (p1Px) p1Status.innerText = `Skan: (${Math.round(p1Px.x)}px, ${Math.round(p1Px.y)}px)`; else p1Status.innerText = T("scanNone");
+                    if (p2Px) p2Status.innerText = `Skan: (${Math.round(p2Px.x)}px, ${Math.round(p2Px.y)}px)`; else p2Status.innerText = T("scanNone");
+                    if (p3Px) p3Status.innerText = `Skan: (${Math.round(p3Px.x)}px, ${Math.round(p3Px.y)}px)`; else p3Status.innerText = T("scanNone");
+                    
+                    if (state.imageSrc) { const img = new Image(); img.onload = () => { mapImage = img; document.getElementById('btnViewScan').click(); setStatus(T("loadedProj")); }; img.src = state.imageSrc; } 
+                    else { mapImage = null; document.getElementById('btnViewOnline').click(); }
+                } catch (err) { logError(T("errJsonParse")); }
+                e.target.value = ''; 
+            }; reader.readAsText(file);
+        }
+        document.getElementById('projectInput').addEventListener('change', handleProjectLoad); 
+
+        // --- ZAAWANSOWANY EKSPORT (ZAPIS DO JSON) ---
+        async function exportProject() {
+            const projName = document.getElementById('projectName').value.trim();
+            if (!projName) {
+                const pnInput = document.getElementById('projectName');
+                document.getElementById('alertModal').classList.remove('hidden'); pnInput.classList.remove('border-slate-300'); pnInput.classList.add('border-rose-500', 'ring-2', 'ring-rose-200');
+                setTimeout(() => { pnInput.classList.add('border-slate-300'); pnInput.classList.remove('border-rose-500', 'ring-2', 'ring-rose-200'); }, 3000);
+                pnInput.focus(); logError(T("nameProjectExport")); return;
+            }
+            try {
+                // Usuwamy obiekty leaflet przed eksportem, by nie wywalić JSON.stringify (circular reference)
+                const safeTracks = tracks.map(t => { const {leafletLine, leafletMarker, ...safe} = t; return safe; });
+
+                const stateObj = {
+                    projectName: projName, imageSrc: mapImage ? mapImage.src : null, mapFileName: mapFileName, tracks: safeTracks,
+                    p1Px: p1Px, p2Px: p2Px, p3Px: p3Px, transform: transform,
+                    inputs: { p1Lat: inputs.p1Lat.value, p1Lon: inputs.p1Lon.value, p2Lat: inputs.p2Lat.value, p2Lon: inputs.p2Lon.value, p3Lat: inputs.p3Lat.value, p3Lon: inputs.p3Lon.value }
+                };
+                const jsonContent = JSON.stringify(stateObj); const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+                let fileName = projName; if (!fileName.endsWith('.json')) fileName += '.json';
+
+                if (window.showSaveFilePicker) {
+                    try { const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'Plik Projektu JSON', accept: {'application/json': ['.json']} }] });
+                        const writable = await handle.createWritable(); await writable.write(blob); await writable.close(); setStatus(T("exportOk")); return;
+                    } catch (err) { if (err.name === 'AbortError') return; }
+                }
+                const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                setStatus(T("exportFallback"));
+            } catch(e) { logError(e.message); }
+        }
+        document.getElementById('btnExport').addEventListener('click', exportProject);
+
+        function setupPointLock(ptNum) {
+            const btn = document.getElementById(`btnUnlockP${ptNum}`);
+            const lat = document.getElementById(`p${ptNum}Lat`);
+            const lon = document.getElementById(`p${ptNum}Lon`);
+            
+            if (!btn || !lat || !lon) return; 
+
+            btn.addEventListener('click', () => {
+                if (lat.hasAttribute('readonly')) {
+                    lat.removeAttribute('readonly'); lon.removeAttribute('readonly');
+                    lat.classList.remove('bg-slate-50', 'text-slate-400'); lat.classList.add('bg-white');
+                    lon.classList.remove('bg-slate-50', 'text-slate-400'); lon.classList.add('bg-white');
+                    btn.innerText = '🔓'; btn.classList.add('bg-amber-200', 'border-amber-400');
+                } else {
+                    lat.setAttribute('readonly', 'true'); lon.setAttribute('readonly', 'true');
+                    lat.classList.add('bg-slate-50', 'text-slate-400'); lat.classList.remove('bg-white');
+                    lon.classList.add('bg-slate-50', 'text-slate-400'); lon.classList.remove('bg-white');
+                    btn.innerText = '🔒'; btn.classList.remove('bg-amber-200', 'border-amber-400');
+                }
+            });
+            lat.classList.add('bg-slate-50', 'text-slate-400'); lon.classList.add('bg-slate-50', 'text-slate-400');
+        }
+        setupPointLock(1); setupPointLock(2); setupPointLock(3); 
+
+        // Kalibracja
+        function initLeafletMapForCalib() {
+            if (typeof L === 'undefined') return false;
+            if (refMap !== null) return true; 
+            refMap = L.map('leafletMap').setView([52.069, 19.480], 6);
+            const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
+            const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
+            satellite.addTo(refMap); L.control.layers({ "Mapa Drogowa": osm, "Satelita": satellite }).addTo(refMap);
+            refMap.on('click', function(e) {
+                const lat = e.latlng.lat.toFixed(8); const lon = e.latlng.lng.toFixed(8);
+                if (refMarker) refMap.removeLayer(refMarker); refMarker = L.marker(e.latlng).addTo(refMap);
+                if (activePointForMap === 1) { inputs.p1Lat.value = lat; inputs.p1Lon.value = lon; } 
+                else if (activePointForMap === 2) { inputs.p2Lat.value = lat; inputs.p2Lon.value = lon; }
+                else if (activePointForMap === 3) { inputs.p3Lat.value = lat; inputs.p3Lon.value = lon; }
+                closeModal(); updateUI();
+            }); return true;
+        }
+        function openMapPicker(pointNum) {
+            activePointForMap = pointNum; modalPointBadge.innerText = `P${pointNum}`;
+            if(!initLeafletMapForCalib()) return; mapModal.classList.remove('hidden');
+            setTimeout(() => {
+                refMap.invalidateSize(); let allLats = []; let allLons = [];
+                tracks.forEach(trk => { if(trk.visible) trk.points.forEach(pt => { allLats.push(pt.lat); allLons.push(pt.lon); }) });
+                if (allLats.length > 0 && !refMarker) refMap.fitBounds([[Math.min(...allLats), Math.min(...allLons)], [Math.max(...allLats), Math.max(...allLons)]], {padding: [50, 50]});
+            }, 200);
+        }
+        function closeModal() { mapModal.classList.add('hidden'); if (refMarker) { refMap.removeLayer(refMarker); refMarker = null; } }
+        function handleMapClick(ptNum) {
+            const hasVal = inputs[`p${ptNum}Lat`].value !== "" && inputs[`p${ptNum}Lon`].value !== "";
+            if (hasVal && !confirm(T("confirmMapChange"))) return; openMapPicker(ptNum);
+        }
+        document.getElementById('btnSetP1MapTop').addEventListener('click', () => handleMapClick(1)); 
+        document.getElementById('btnSetP2MapTop').addEventListener('click', () => handleMapClick(2)); 
+        document.getElementById('btnSetP3MapTop').addEventListener('click', () => handleMapClick(3)); 
+        btnCloseModal.addEventListener('click', closeModal);
+
+        function setCalibMode(mode) {
+            calibMode = mode;
+            if (mode !== 0) { canvas.classList.add('calibrating'); document.getElementById('btnViewScan').click(); } else { canvas.classList.remove('calibrating'); }
+            ['btnSetP1ImgTop', 'btnSetP2ImgTop', 'btnSetP3ImgTop'].forEach(id => document.getElementById(id).classList.remove('ring-2', 'ring-amber-400', 'bg-amber-100'));
+            if (mode === 1) document.getElementById('btnSetP1ImgTop').classList.add('ring-2', 'ring-amber-400', 'bg-amber-100'); 
+            else if (mode === 2) document.getElementById('btnSetP2ImgTop').classList.add('ring-2', 'ring-amber-400', 'bg-amber-100');
+            else if (mode === 3) document.getElementById('btnSetP3ImgTop').classList.add('ring-2', 'ring-amber-400', 'bg-amber-100');
+        }
+        function handleImgClick(ptNum) {
+            const px = ptNum === 1 ? p1Px : (ptNum === 2 ? p2Px : p3Px);
+            if (px !== null && !confirm(T("confirmImgChange"))) return; setCalibMode(ptNum);
+        }
+        document.getElementById('btnSetP1ImgTop').addEventListener('click', () => handleImgClick(1)); 
+        document.getElementById('btnSetP2ImgTop').addEventListener('click', () => handleImgClick(2));
+        document.getElementById('btnSetP3ImgTop').addEventListener('click', () => handleImgClick(3));
+
+        window.addEventListener('load', () => { 
+            // Pobranie języka z parametru URL (jeśli aplikacja jest osadzona w iframe z pliku Index)
+            const urlParams = new URLSearchParams(window.location.search);
+            const lang = urlParams.get('lang') || 'pl';
+            changeLanguage(lang);
+            
+            setStatus(T("sysReady")); 
+            
+            // Automatyczna inicjalizacja mapy Leaflet
+            initViewMap();
+            setTimeout(() => { if (viewMap) viewMap.invalidateSize(); }, 200);
+            updateUI();
+        });
+    </script>
+</body>
+</html>
