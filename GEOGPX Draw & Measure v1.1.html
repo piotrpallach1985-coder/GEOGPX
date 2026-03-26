@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>GEOGPX Draw & Measure v.1.1</title>
     
-    <!-- Tailwind CSS -->
-    <script src="tailwind.js"></script>
+    <!-- Tailwind CSS (naprawione: użycie CDN zamiast niedostępnego lokalnego pliku) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Leaflet CSS i JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
@@ -132,7 +132,7 @@
                         <div class="flex justify-between items-center mb-0.5">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-[11px] font-black text-blue-700" data-i18n="point1">PUNKT 1</span>
-                                <button id="btnUnlockP1" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
+                                <button id="btnUnlockP1" title="Odblokuj edycję ręczną" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
                             </div>
                             <span id="p1Check" class="hidden text-emerald-600 font-bold text-[8px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
                         </div>
@@ -147,7 +147,7 @@
                         <div class="flex justify-between items-center mb-0.5">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-[11px] font-black text-purple-700" data-i18n="point2">PUNKT 2</span>
-                                <button id="btnUnlockP2" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
+                                <button id="btnUnlockP2" title="Odblokuj edycję ręczną" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
                             </div>
                             <span id="p2Check" class="hidden text-emerald-600 font-bold text-[8px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
                         </div>
@@ -162,7 +162,7 @@
                         <div class="flex justify-between items-center mb-0.5">
                             <div class="flex items-center gap-1.5">
                                 <span class="text-[11px] font-black text-orange-700"><span data-i18n="point3">PUNKT 3</span> <span class="font-normal text-[9px]" data-i18n="opt">(Opcja)</span></span>
-                                <button id="btnUnlockP3" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
+                                <button id="btnUnlockP3" title="Odblokuj edycję ręczną" class="text-[9px] bg-white border border-slate-300 hover:bg-slate-100 px-1 py-0.5 rounded shadow-sm transition">🔒</button>
                             </div>
                             <span id="p3Check" class="hidden text-emerald-600 font-bold text-[8px] bg-emerald-100/80 px-1.5 py-0.5 rounded shadow-sm" data-i18n="loaded">✓ WGRANY</span>
                         </div>
@@ -431,6 +431,7 @@
 
         document.addEventListener("DOMContentLoaded", () => {
             changeLanguage(currentLang);
+            setupUnlockButtons(); // Zainicjuj logikę kłódek z nowej poprawki
         });
 
         // Logowanie
@@ -470,7 +471,6 @@
         const btnExport = document.getElementById('btnExport');
         const projectNameInput = document.getElementById('projectName'); const btnCenterImage = document.getElementById('btnCenterImage');
         const btnFullScreen = document.getElementById('btnFullScreen');
-        const distDisplay = document.getElementById('distDisplay');
 
         const inputs = {
             p1Lat: document.getElementById('p1Lat'), p1Lon: document.getElementById('p1Lon'),
@@ -485,7 +485,8 @@
             return {
                 p1: p1Px ? { x: p1Px.x, y: p1Px.y, lat: parseFloat(inputs.p1Lat.value), lon: parseFloat(inputs.p1Lon.value) } : null,
                 p2: p2Px ? { x: p2Px.x, y: p2Px.y, lat: parseFloat(inputs.p2Lat.value), lon: parseFloat(inputs.p2Lon.value) } : null,
-                p3: p3Px ? { x: p3Px.x, y: p3Px.y, lat: parseFloat(inputs.p3Lat.value), lon: parseFloat(inputs.p3Lat.value) } : null
+                // POPRAWKA: Poniżej lon było przypisywane z inputs.p3Lat.value, co psuło przeliczenia
+                p3: p3Px ? { x: p3Px.x, y: p3Px.y, lat: parseFloat(inputs.p3Lat.value), lon: parseFloat(inputs.p3Lon.value) } : null
             };
         }
 
@@ -1153,6 +1154,38 @@
             if (px !== null && !confirm(T("confirmImgChange"))) return; setCalibMode(ptNum, `${T("clickImgToSet")} ${T("point" + ptNum)}.`);
         }
         document.getElementById('btnSetP1ImgTop').addEventListener('click', () => handleImgClick(1)); document.getElementById('btnSetP2ImgTop').addEventListener('click', () => handleImgClick(2)); document.getElementById('btnSetP3ImgTop').addEventListener('click', () => handleImgClick(3));
+
+        // --- DODANE: LOGIKA KŁÓDEK I RĘCZNEJ EDYCJI ---
+        function setupUnlockButtons() {
+            [1, 2, 3].forEach(num => {
+                const btn = document.getElementById(`btnUnlockP${num}`);
+                const latInput = document.getElementById(`p${num}Lat`);
+                const lonInput = document.getElementById(`p${num}Lon`);
+                
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        if (latInput.hasAttribute('readonly')) {
+                            if (confirm(T("confirmUnlock"))) {
+                                latInput.removeAttribute('readonly');
+                                lonInput.removeAttribute('readonly');
+                                btn.innerHTML = '🔓';
+                                btn.classList.add('bg-blue-100', 'border-blue-300');
+                                latInput.focus();
+                            }
+                        } else {
+                            latInput.setAttribute('readonly', 'readonly');
+                            lonInput.setAttribute('readonly', 'readonly');
+                            btn.innerHTML = '🔒';
+                            btn.classList.remove('bg-blue-100', 'border-blue-300');
+                        }
+                    });
+                }
+
+                // Nasłuchuj zmian - jeśli użytkownik edytuje ręcznie, natychmiast przelicz mapę
+                if (latInput) latInput.addEventListener('input', () => { updateAllPointsUI(); renderMapAndTrack(); });
+                if (lonInput) lonInput.addEventListener('input', () => { updateAllPointsUI(); renderMapAndTrack(); });
+            });
+        }
 
         window.addEventListener('load', () => { setDrawTool('none'); setStatus(T("sysReady")); });
     </script>
